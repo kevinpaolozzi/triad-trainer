@@ -400,15 +400,21 @@ function updateTrainingVoicings() {
     if (isScale) {
         // Scale Run: cycle through diatonic triads, running up the neck per chord
         var triads = getScaleTriads(rootIndex, quality);
-        if (mode === 'scale-reverse') triads.reverse();
-        all = [];
 
-        // Build scale bar HTML
+        // Build scale bar HTML always in normal order
         var barHtml = '';
         for (var t = 0; t < triads.length; t++) {
             barHtml += '<span class="scale-chord" data-label="' + triads[t].label + '">' + triads[t].label + '</span>';
+        }
+        scaleBar.innerHTML = barHtml;
 
-            var triad = triads[t];
+        // Reverse triad order for voicings if needed
+        var voicingTriads = triads.slice();
+        if (mode === 'scale-reverse') voicingTriads.reverse();
+
+        all = [];
+        for (var t = 0; t < voicingTriads.length; t++) {
+            var triad = voicingTriads[t];
             var chordVoicings = filterAndSort(
                 getAllVoicingsForChord(triad.root, triad.quality),
                 invFilter, stringsFilter
@@ -423,7 +429,6 @@ function updateTrainingVoicings() {
 
             all = all.concat(chordVoicings);
         }
-        scaleBar.innerHTML = barHtml;
     } else {
         // Single Chord mode (or dim/aug fallback)
         scaleBar.innerHTML = '';
