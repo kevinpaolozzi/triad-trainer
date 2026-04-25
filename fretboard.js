@@ -7,12 +7,12 @@ var FRET_DOT_POSITIONS = [3, 5, 7, 9, 12, 15];
 
 // Interval colors (R, G, B)
 var NOTE_COLORS = {
-    root:  [0.83, 0.25, 0.25],  // #d44040
-    third: [0.22, 0.53, 0.85],  // #3888d8
-    fifth: [0.22, 0.66, 0.41],  // #38a868
+    root:  [0.93, 0.55, 0.15],  // #ed8c26 orange
+    third: [0.70, 0.70, 0.70],  // #b3b3b3 light grey
+    fifth: [0.50, 0.50, 0.50],  // #808080 mid grey
     user:  [0.85, 0.63, 0.19],  // #d8a030
     pent:  [0.85, 0.63, 0.19],  // gold/amber for pentatonic
-    dim:   [0.45, 0.45, 0.45]   // dimmed
+    dim:   [0.35, 0.35, 0.35]   // dimmed
 };
 
 // ===================== Shader Sources =====================
@@ -389,8 +389,15 @@ FretboardRenderer.prototype._updateOverlay = function() {
 
     var html = '';
 
-    // String labels
+    // String labels — hide if there's a note at fret 0 on that string
+    var fret0Strings = {};
+    for (var i = 0; i < this.notes.length; i++) {
+        if (this.notes[i].fret === 0 && this.notes[i].opacity > 0.1) {
+            fret0Strings[this.notes[i].string] = true;
+        }
+    }
     for (var si = 0; si < TOTAL_STRINGS; si++) {
+        if (fret0Strings[si]) continue;
         var di = this._displayIndex(si);
         var y = this._stringYCSS(di);
         var isActive = this.activeStrings.indexOf(si) !== -1;
@@ -424,7 +431,7 @@ FretboardRenderer.prototype._updateOverlay = function() {
     // Note labels
     for (var i = 0; i < this.notes.length; i++) {
         var note = this.notes[i];
-        if (note.opacity < 0.1 || !note.label || note.fret === 0) continue;
+        if (note.opacity < 0.1 || !note.label) continue;
         var nx = note.x / this.dpr;
         var ny = note.y / this.dpr;
         var fontSize = note.size && note.size < 16 ? 9 : 11;

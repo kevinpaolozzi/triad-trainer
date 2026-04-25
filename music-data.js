@@ -84,6 +84,7 @@ function findAllVoicings(pitchClasses, stringSet) {
 
     var MAX_SPAN = 5;
     var results = [];
+    var seen = {};
 
     for (var a = 0; a < options[0].length; a++) {
         for (var b = 0; b < options[1].length; b++) {
@@ -91,6 +92,10 @@ function findAllVoicings(pitchClasses, stringSet) {
                 var frets = [options[0][a], options[1][b], options[2][c]];
                 var span = Math.max.apply(null, frets) - Math.min.apply(null, frets);
                 if (span <= MAX_SPAN) {
+                    // Deduplicate: normalize frets mod 12 to detect octave repeats
+                    var key = frets.map(function(f) { return f % 12; }).join(',');
+                    if (seen[key]) continue;
+                    seen[key] = true;
                     results.push(frets.map(function(fret, i) {
                         return { string: stringSet[i], fret: fret };
                     }));

@@ -1,3 +1,33 @@
+/* ===================== Druk Wide (self-hosted) ===================== */
+
+@font-face {
+    font-family: 'Druk Wide';
+    src: url('Druk/Druk Wide Medium.otf') format('opentype');
+    font-weight: 500;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Druk Wide';
+    src: url('Druk/Druk Wide Bold.otf') format('opentype');
+    font-weight: 700;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Druk Wide';
+    src: url('Druk/Druk Wide Heavy.otf') format('opentype');
+    font-weight: 800;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Druk Wide';
+    src: url('Druk/Druk Wide Super.otf') format('opentype');
+    font-weight: 900;
+    font-style: normal;
+}
+
 /* ===================== Brutalist Reset ===================== */
 
 :root {
@@ -30,10 +60,11 @@ header {
 }
 
 header h1 {
-    font-size: 0.75rem;
-    font-weight: 400;
+    font-family: 'Druk Wide', 'JetBrains Mono', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
     color: var(--fg-dim);
-    letter-spacing: 6px;
+    letter-spacing: 4px;
     text-transform: uppercase;
 }
 
@@ -239,6 +270,7 @@ header h1 {
 
 .voicing-now {
     text-align: center;
+    font-family: 'Druk Wide', 'JetBrains Mono', sans-serif;
     font-size: 2rem;
     font-weight: 700;
     color: var(--accent);
@@ -488,7 +520,7 @@ header h1 {
     font-size: 11px;
     font-weight: 500;
     color: #fff;
-    font-family: 'JetBrains Mono', monospace !important;
+    font-family: 'Druk Wide', 'JetBrains Mono', monospace !important;
 }
 
 .fb-overlay .fb-fret-number {
@@ -497,7 +529,7 @@ header h1 {
     font-size: 10px;
     font-weight: 400;
     color: var(--fg-dim);
-    font-family: 'JetBrains Mono', monospace !important;
+    font-family: 'Druk Wide', 'JetBrains Mono', monospace !important;
 }
 
 .fb-overlay .fb-fret-dot-label {
@@ -510,11 +542,11 @@ header h1 {
 
 .fb-overlay .fb-note-label {
     position: absolute;
-    transform: translate(-50%, -50%);
-    font-size: 11px;
-    font-weight: 700;
-    color: #fff;
-    font-family: 'JetBrains Mono', monospace !important;
+    transform: translate(-50%, -40%);
+    font-size: 9px;
+    font-weight: 800;
+    color: #000;
+    font-family: 'Druk Wide', 'JetBrains Mono', monospace !important;
     text-shadow: none;
 }
 
@@ -539,8 +571,9 @@ header h1 {
 }
 
 .note-info .scale-degree .degree-name {
+    font-family: 'Druk Wide', 'JetBrains Mono', sans-serif;
     font-size: 1.1rem;
-    font-weight: 400;
+    font-weight: 700;
     color: var(--fg-dim);
     letter-spacing: 1px;
 }
@@ -571,6 +604,7 @@ header h1 {
 }
 
 .train-scale-bar .scale-chord {
+    font-family: 'Druk Wide', 'JetBrains Mono', sans-serif;
     font-size: 2rem;
     font-weight: 700;
     letter-spacing: 2px;
