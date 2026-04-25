@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guitar Triad Tutor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Guitar Triad Tutor</h1>
+    </header>
+
+    <main>
+        <div class="mode-switcher">
+            <button class="mode-tab active" data-mode="training">Training</button>
+            <button class="mode-tab" data-mode="reference">Reference</button>
+        </div>
+
+        <section id="reference-panel" style="display:none">
+            <div class="controls">
+                <label>
+                    Root
+                    <div class="custom-select" id="root-select" data-value="0">
+                        <button class="custom-select-trigger" type="button">C</button>
+                        <div class="custom-select-options"></div>
+                    </div>
+                </label>
+                <label>
+                    Quality
+                    <div class="custom-select" id="quality-select" data-value="major">
+                        <button class="custom-select-trigger" type="button">Major</button>
+                        <div class="custom-select-options">
+                            <div class="custom-select-option" data-value="major">Major</div>
+                            <div class="custom-select-option" data-value="minor">Minor</div>
+                            <div class="custom-select-option" data-value="dim">Dim</div>
+                            <div class="custom-select-option" data-value="aug">Aug</div>
+                        </div>
+                    </div>
+                </label>
+                <div class="string-toggles-wrap">
+                    <span class="string-toggles-label">Strings</span>
+                    <div class="string-toggles" id="string-toggles">
+                        <button class="string-toggle" data-string="0">E</button>
+                        <button class="string-toggle" data-string="1">A</button>
+                        <button class="string-toggle active" data-string="2">D</button>
+                        <button class="string-toggle active" data-string="3">G</button>
+                        <button class="string-toggle active" data-string="4">B</button>
+                        <button class="string-toggle" data-string="5">e</button>
+                    </div>
+                </div>
+                <label>
+                    Inversion
+                    <div class="custom-select" id="inversion-select" data-value="0">
+                        <button class="custom-select-trigger" type="button">Root position</button>
+                        <div class="custom-select-options">
+                            <div class="custom-select-option" data-value="0">Root position</div>
+                            <div class="custom-select-option" data-value="1">1st inversion</div>
+                            <div class="custom-select-option" data-value="2">2nd inversion</div>
+                        </div>
+                    </div>
+                </label>
+                <label>
+                    Pentatonic
+                    <div class="custom-select" id="pentatonic-select" data-value="off">
+                        <button class="custom-select-trigger" type="button">Off</button>
+                        <div class="custom-select-options">
+                            <div class="custom-select-option selected" data-value="off">Off</div>
+                            <div class="custom-select-option" data-value="major">Major</div>
+                            <div class="custom-select-option" data-value="minor">Minor</div>
+                        </div>
+                    </div>
+                </label>
+            </div>
+
+            <div class="fretboard-wrap">
+                <canvas id="ref-canvas"></canvas>
+                <div id="ref-overlay" class="fb-overlay"></div>
+            </div>
+
+            <div id="ref-note-info" class="note-info"></div>
+        </section>
+
+        <section id="training-panel">
+            <div class="controls">
+                <label>
+                    Mode
+                    <div class="custom-select" id="train-mode-select" data-value="chord">
+                        <button class="custom-select-trigger" type="button">Single Chord</button>
+                        <div class="custom-select-options">
+                            <div class="custom-select-option selected" data-value="chord">Single Chord</div>
+                            <div class="custom-select-option" data-value="scale">Scale Run</div>
+                            <div class="custom-select-option" data-value="scale-reverse">Scale Run (Reverse)</div>
+                        </div>
+                    </div>
+                </label>
+                <label>
+                    Root
+                    <div class="custom-select" id="train-root-select" data-value="0">
+                        <button class="custom-select-trigger" type="button">C</button>
+                        <div class="custom-select-options"></div>
+                    </div>
+                </label>
+                <label>
+                    Quality
+                    <div class="custom-select" id="train-quality-select" data-value="major">
+                        <button class="custom-select-trigger" type="button">Major</button>
+                        <div class="custom-select-options">
+                            <div class="custom-select-option" data-value="major">Major</div>
+                            <div class="custom-select-option" data-value="minor">Minor</div>
+                            <div class="custom-select-option" data-value="dim">Dim</div>
+                            <div class="custom-select-option" data-value="aug">Aug</div>
+                        </div>
+                    </div>
+                </label>
+                <label>
+                    Strings
+                    <div class="custom-select" id="train-strings-select" data-value="3">
+                        <button class="custom-select-trigger" type="button">3-2-1</button>
+                        <div class="custom-select-options">
+                            <div class="custom-select-option" data-value="all">All</div>
+                            <div class="custom-select-option" data-value="0">6-5-4</div>
+                            <div class="custom-select-option" data-value="1">5-4-3</div>
+                            <div class="custom-select-option" data-value="2">4-3-2</div>
+                            <div class="custom-select-option selected" data-value="3">3-2-1</div>
+                        </div>
+                    </div>
+                </label>
+                <label>
+                    Inversion
+                    <div class="custom-select" id="train-inversion-select" data-value="all">
+                        <button class="custom-select-trigger" type="button">All</button>
+                        <div class="custom-select-options">
+                            <div class="custom-select-option selected" data-value="all">All</div>
+                            <div class="custom-select-option" data-value="0">Root position</div>
+                            <div class="custom-select-option" data-value="1">1st inversion</div>
+                            <div class="custom-select-option" data-value="2">2nd inversion</div>
+                        </div>
+                    </div>
+                </label>
+                <div class="bpm-control">
+                    <span class="bpm-label">BPM</span>
+                    <div class="bpm-row">
+                        <button class="bpm-btn" id="bpm-minus">&minus;</button>
+                        <span class="bpm-display" id="bpm-display">60</span>
+                        <button class="bpm-btn" id="bpm-plus">+</button>
+                    </div>
+                </div>
+                <div class="transport-wrap">
+                    <button class="transport-btn" id="transport-btn">Play</button>
+                </div>
+                <label class="sound-toggle">
+                    <input type="checkbox" id="sound-toggle"> Sound
+                </label>
+            </div>
+
+            <div class="voicing-now" id="voicing-now">Root position</div>
+
+            <div class="voicing-indicator" id="voicing-indicator">
+                <span class="voicing-count" id="voicing-count">1 / 12</span>
+                <span class="voicing-desc" id="voicing-desc">3-2-1  Root position</span>
+            </div>
+
+            <div class="fretboard-wrap">
+                <canvas id="train-canvas"></canvas>
+                <div id="train-overlay" class="fb-overlay"></div>
+            </div>
+
+            <div id="train-scale-bar" class="train-scale-bar"></div>
+        </section>
+
+    </main>
+
+    <script src="music-data.js"></script>
+    <script src="fretboard.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
