@@ -567,47 +567,87 @@ function scheduleChordTones(voicing, time) {
         var pos = voicing[i];
         var midi = STRING_TUNING[pos.string] + pos.fret;
         var freq = 440 * Math.pow(2, (midi - 69) / 12);
-        var stagger = i * 0.02;
+        var stagger = i * 0.015;
         var noteTime = time + stagger;
 
-        // 1. Pitched noise buffer (Karplus-Strong excitation)
-        var bufferLen = Math.round(sampleRate / freq);
-        var noiseBuffer = ctx.createBuffer(1, bufferLen, sampleRate);
-        var data = noiseBuffer.getChannelData(0);
-        for (var s = 0; s < bufferLen; s++) {
+        // Offline Karplus-Strong synthesis
+        var duration = 2.5;
+        var numSamples = Math.ceil(sampleRate * duration);
+        var period = Math.round(sampleRate / freq);
+        var audioBuffer = ctx.createBuffer(1, numSamples, sampleRate);
+        var data = audioBuffer.getChannelData(0);
+
+        // Initialize first period with noise
+        for (var s = 0; s < period && s < numSamples; s++) {
             data[s] = Math.random() * 2 - 1;
         }
 
-        var source = ctx.createBufferSource();
-        source.buffer = noiseBuffer;
-        source.loop = true;
+        // Pre-filter the noise: 3-pass moving average to warm up the excitation
+        for (var pass = 0; pass < 3; pass++) {
+            var prev = data[0];
+            for (var s = 1; s < period; s++) {
+                var tmp = data[s];
+                data[s] = 0.5 * (prev + data[s]);
+                prev = tmp;
+            }
+        }
 
-        // 2. Lowpass filter (harmonic decay)
+        // Karplus-Strong with weighted average (heavier lowpass than 50/50)
+        var decay = 0.996;
+        var blend = 0.4; // lower = warmer, faster high-freq decay
+        for (var s = period; s < numSamples; s++) {
+            data[s] = decay * (blend * data[s - period] + (1 - blend) * data[s - period + 1]);
+        }
+
+        var source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+
+        // Lowpass to cut tinny highs
         var lpf = ctx.createBiquadFilter();
         lpf.type = 'lowpass';
-        lpf.frequency.setValueAtTime(freq * 6, noteTime);
-        lpf.frequency.exponentialRampToValueAtTime(freq * 1.5, noteTime + 0.8);
+        lpf.frequency.value = Math.min(freq * 4, 5000);
+        lpf.Q.value = 0.7;
 
-        // 3. Body resonance filter
-        var body = ctx.createBiquadFilter();
-        body.type = 'peaking';
-        body.frequency.value = 250;
-        body.gain.value = 4;
-        body.Q.value = 1;
+        // Body resonance filters (acoustic guitar body)
+        var body1 = ctx.createBiquadFilter();
+        body1.type = 'peaking';
+        body1.frequency.value = 100;
+        body1.gain.value = 6;
+        body1.Q.value = 1.2;
 
-        // 4. Gain envelope
+        var body2 = ctx.createBiquadFilter();
+        body2.type = 'peaking';
+        body2.frequency.value = 280;
+        body2.gain.value = 4;
+        body2.Q.value = 1;
+
+        var body3 = ctx.createBiquadFilter();
+        body3.type = 'peaking';
+        body3.frequency.value = 500;
+        body3.gain.value = 2;
+        body3.Q.value = 1.5;
+
+        // Highpass to remove rumble
+        var hpf = ctx.createBiquadFilter();
+        hpf.type = 'highpass';
+        hpf.frequency.value = 75;
+
+        // Output gain envelope
         var gain = ctx.createGain();
-        gain.gain.setValueAtTime(0.12, noteTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 1.2);
+        gain.gain.setValueAtTime(0.22, noteTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 2.2);
 
-        // Signal chain: source → lowpass → body resonance → gain → destination
+        // Signal chain: source → lpf → body1 → body2 → body3 → hpf → gain → out
         source.connect(lpf);
-        lpf.connect(body);
-        body.connect(gain);
+        lpf.connect(body1);
+        body1.connect(body2);
+        body2.connect(body3);
+        body3.connect(hpf);
+        hpf.connect(gain);
         gain.connect(ctx.destination);
 
         source.start(noteTime);
-        source.stop(noteTime + 1.5);
+        source.stop(noteTime + 2.5);
     }
 }
 
