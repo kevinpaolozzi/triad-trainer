@@ -293,6 +293,10 @@ function initModeSwitcher() {
                     updateTrainingVoicings();
                 } else {
                     stopMetronome();
+                    if (refRenderer) {
+                        refRenderer.resize();
+                        updateReference();
+                    }
                 }
             });
         })(tabs[i]);

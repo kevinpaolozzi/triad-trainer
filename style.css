@@ -84,6 +84,20 @@ header h1 {
     padding: 0 1.5rem 2rem;
 }
 
+/* ===================== Panel Header ===================== */
+
+.panel-header {
+    height: 160px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding-top: 0.75rem;
+}
+
+.panel-header .controls {
+    margin-bottom: 0;
+}
+
 /* ===================== BPM Control ===================== */
 
 .bpm-control {
@@ -260,7 +274,7 @@ header h1 {
 /* ===================== Reference Panel ===================== */
 
 #reference-panel {
-    max-width: 1200px;
+    max-width: 1500px;
     margin: 0 auto;
     padding: 0 1.5rem 2rem;
 }
