@@ -420,9 +420,7 @@ FretboardRenderer.prototype._updateOverlay = function() {
         var pos = FRET_DOT_POSITIONS[d];
         var dx = this._fretXCSS(pos);
         if (pos === 12) {
-            var dotSpread = this.stringSpacing * 0.6;
-            html += '<span class="fb-fret-dot-label" style="top:' + (dotY - dotSpread) + 'px;left:' + dx + 'px">\u2022</span>';
-            html += '<span class="fb-fret-dot-label" style="top:' + (dotY + dotSpread) + 'px;left:' + dx + 'px">\u2022</span>';
+            html += '<span class="fb-fret-dot-label" style="top:' + dotY + 'px;left:' + dx + 'px;line-height:1">\u2022<br>\u2022</span>';
         } else {
             html += '<span class="fb-fret-dot-label" style="top:' + dotY + 'px;left:' + dx + 'px">\u2022</span>';
         }
