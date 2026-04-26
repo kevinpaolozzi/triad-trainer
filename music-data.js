@@ -9,6 +9,13 @@ const STRING_TUNING = [40, 45, 50, 55, 59, 64];
 const STRING_SETS = [[0,1,2], [1,2,3], [2,3,4], [3,4,5]];
 const STRING_SET_LABELS = ['6-5-4', '5-4-3', '4-3-2', '3-2-1'];
 
+// Drop-2 open voicing string sets (derived from closed sets by dropping middle note an octave)
+// Closed [1,2,3] (5-4-3) → Open [0,2,3] (6-4-3)
+// Closed [2,3,4] (4-3-2) → Open [1,3,4] (5-3-2)
+// Closed [3,4,5] (3-2-1) → Open [2,4,5] (4-2-1)
+const OPEN_STRING_SETS = [[0,2,3], [1,3,4], [2,4,5]];
+const OPEN_STRING_SET_LABELS = ['6-4-3', '5-3-2', '4-2-1'];
+
 const TRIAD_INTERVALS = {
     major: [0, 4, 7],
     minor: [0, 3, 7],
@@ -126,6 +133,36 @@ function getAllVoicingsForChord(rootIndex, quality) {
                     stringSetIndex: si,
                     stringSet: stringSet
                 });
+            }
+        }
+    }
+    return results;
+}
+
+function getDrop2VoicingsForChord(rootIndex, quality) {
+    var results = [];
+    for (var si = 0; si < OPEN_STRING_SETS.length; si++) {
+        var openSet = OPEN_STRING_SETS[si];
+        for (var inv = 0; inv < 3; inv++) {
+            var triadNotes = getTriadNotes(rootIndex, quality);
+            var inverted = invertTriad(triadNotes, inv);
+            // Drop-2: middle note drops an octave, becoming the new bass
+            // Reorder pitch classes: [low, mid, high] → [mid, low, high]
+            var drop2PCs = [inverted[1], inverted[0], inverted[2]];
+            var voicing = findVoicing(drop2PCs, openSet);
+            if (voicing) {
+                // Verify ascending MIDI pitch order (true drop-2 shape)
+                var m0 = STRING_TUNING[voicing[0].string] + voicing[0].fret;
+                var m1 = STRING_TUNING[voicing[1].string] + voicing[1].fret;
+                var m2 = STRING_TUNING[voicing[2].string] + voicing[2].fret;
+                if (m0 < m1 && m1 < m2) {
+                    results.push({
+                        voicing: voicing,
+                        inversion: inv,
+                        stringSetIndex: si,
+                        stringSet: openSet
+                    });
+                }
             }
         }
     }

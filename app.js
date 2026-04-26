@@ -324,6 +324,7 @@ function initTrainingPanel() {
     var trainMode = document.getElementById('train-mode-select');
     var trainRoot = document.getElementById('train-root-select');
     var trainQuality = document.getElementById('train-quality-select');
+    var trainVoicing = document.getElementById('train-voicing-select');
     var trainStrings = document.getElementById('train-strings-select');
     var trainInversion = document.getElementById('train-inversion-select');
     trainMode._onChange = function() {
@@ -333,6 +334,10 @@ function initTrainingPanel() {
         updateTrainingVoicings();
     };
     trainQuality._onChange = function() {
+        updateTrainingVoicings();
+    };
+    trainVoicing._onChange = function() {
+        updateStringsDropdown();
         updateTrainingVoicings();
     };
     trainStrings._onChange = function() {
@@ -365,6 +370,51 @@ function initTrainingPanel() {
     });
 }
 
+function updateStringsDropdown() {
+    var voicingType = document.getElementById('train-voicing-select').dataset.value;
+    var labels = (voicingType === 'open') ? OPEN_STRING_SET_LABELS : STRING_SET_LABELS;
+
+    var oldSel = document.getElementById('train-strings-select');
+    var onChange = oldSel._onChange;
+
+    // Clone the entire select to strip all old event listeners
+    var sel = oldSel.cloneNode(false);
+    sel.dataset.value = 'all';
+
+    // Build new trigger
+    var trigger = document.createElement('button');
+    trigger.className = 'custom-select-trigger';
+    trigger.type = 'button';
+    trigger.textContent = 'All';
+    sel.appendChild(trigger);
+
+    // Build new options
+    var optionsWrap = document.createElement('div');
+    optionsWrap.className = 'custom-select-options';
+
+    var allOpt = document.createElement('div');
+    allOpt.className = 'custom-select-option selected';
+    allOpt.dataset.value = 'all';
+    allOpt.textContent = 'All';
+    optionsWrap.appendChild(allOpt);
+
+    for (var i = 0; i < labels.length; i++) {
+        var opt = document.createElement('div');
+        opt.className = 'custom-select-option';
+        opt.dataset.value = String(i);
+        opt.textContent = labels[i];
+        optionsWrap.appendChild(opt);
+    }
+
+    sel.appendChild(optionsWrap);
+    oldSel.parentNode.replaceChild(sel, oldSel);
+
+    // Restore onChange and re-init
+    sel._onChange = onChange;
+    sel._initialized = false;
+    initCustomSelects();
+}
+
 function filterAndSort(voicings, invFilter, stringsFilter) {
     var filtered = voicings;
 
@@ -394,6 +444,10 @@ function updateTrainingVoicings() {
     var mode = document.getElementById('train-mode-select').dataset.value;
     var invFilter = document.getElementById('train-inversion-select').dataset.value;
     var stringsFilter = document.getElementById('train-strings-select').dataset.value;
+    var voicingType = document.getElementById('train-voicing-select').dataset.value;
+
+    var isOpen = (voicingType === 'open');
+    var setLabels = isOpen ? OPEN_STRING_SET_LABELS : STRING_SET_LABELS;
 
     var all;
 
@@ -419,16 +473,17 @@ function updateTrainingVoicings() {
         all = [];
         for (var t = 0; t < voicingTriads.length; t++) {
             var triad = voicingTriads[t];
-            var chordVoicings = filterAndSort(
-                getAllVoicingsForChord(triad.root, triad.quality),
-                invFilter, stringsFilter
-            );
+            var rawVoicings = isOpen
+                ? getDrop2VoicingsForChord(triad.root, triad.quality)
+                : getAllVoicingsForChord(triad.root, triad.quality);
+            var chordVoicings = filterAndSort(rawVoicings, invFilter, stringsFilter);
 
-            // Tag each voicing with chord info for showVoicing
+            // Tag each voicing with chord info and string set label for showVoicing
             for (var vi = 0; vi < chordVoicings.length; vi++) {
                 chordVoicings[vi].chordLabel = triad.label;
                 chordVoicings[vi].chordRoot = triad.root;
                 chordVoicings[vi].chordQuality = triad.quality;
+                chordVoicings[vi].stringSetLabel = setLabels[chordVoicings[vi].stringSetIndex];
             }
 
             all = all.concat(chordVoicings);
@@ -436,10 +491,15 @@ function updateTrainingVoicings() {
     } else {
         // Single Chord mode (or dim/aug fallback)
         scaleBar.innerHTML = '';
-        all = filterAndSort(
-            getAllVoicingsForChord(rootIndex, quality),
-            invFilter, stringsFilter
-        );
+        var rawVoicings = isOpen
+            ? getDrop2VoicingsForChord(rootIndex, quality)
+            : getAllVoicingsForChord(rootIndex, quality);
+        all = filterAndSort(rawVoicings, invFilter, stringsFilter);
+
+        // Tag each voicing with string set label
+        for (var vi = 0; vi < all.length; vi++) {
+            all[vi].stringSetLabel = setLabels[all[vi].stringSetIndex];
+        }
     }
 
     metronome.voicings = all;
@@ -527,8 +587,9 @@ function showVoicing(index) {
         : INVERSION_NAMES[v.inversion];
     document.getElementById('voicing-now').textContent = nowLabel;
     document.getElementById('voicing-count').textContent = (index + 1) + ' / ' + metronome.voicings.length;
+    var descLabel = v.stringSetLabel || STRING_SET_LABELS[v.stringSetIndex];
     document.getElementById('voicing-desc').textContent =
-        STRING_SET_LABELS[v.stringSetIndex] + '  ' + INVERSION_NAMES[v.inversion];
+        descLabel + '  ' + INVERSION_NAMES[v.inversion];
 
     // Highlight active chord in scale bar
     var chords = document.querySelectorAll('#train-scale-bar .scale-chord');
