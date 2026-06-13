@@ -368,6 +368,38 @@ function initTrainingPanel() {
             startMetronome();
         }
     });
+
+    // Voicing navigation arrows
+    document.getElementById('voicing-prev').addEventListener('click', function() {
+        if (metronome.voicings.length === 0) return;
+        var idx = metronome.currentVoicingIndex - 1;
+        if (idx < 0) idx = metronome.voicings.length - 1;
+        metronome.currentVoicingIndex = idx;
+        showVoicing(idx);
+    });
+    document.getElementById('voicing-next').addEventListener('click', function() {
+        if (metronome.voicings.length === 0) return;
+        var idx = (metronome.currentVoicingIndex + 1) % metronome.voicings.length;
+        metronome.currentVoicingIndex = idx;
+        showVoicing(idx);
+    });
+
+    // Keyboard arrow navigation
+    document.addEventListener('keydown', function(e) {
+        if (currentMode !== 'training' || metronome.voicings.length === 0) return;
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            var idx = metronome.currentVoicingIndex - 1;
+            if (idx < 0) idx = metronome.voicings.length - 1;
+            metronome.currentVoicingIndex = idx;
+            showVoicing(idx);
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            var idx = (metronome.currentVoicingIndex + 1) % metronome.voicings.length;
+            metronome.currentVoicingIndex = idx;
+            showVoicing(idx);
+        }
+    });
 }
 
 function updateStringsDropdown() {

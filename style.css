@@ -118,7 +118,7 @@ header h1 {
 /* ===================== Panel Header ===================== */
 
 .panel-header {
-    height: 160px;
+    height: 190px;
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
@@ -284,9 +284,9 @@ header h1 {
 .voicing-indicator {
     display: flex;
     justify-content: center;
-    align-items: baseline;
+    align-items: center;
     gap: 1.5rem;
-    padding: 0.6rem 0 0;
+    padding: 0.6rem 0 30px;
 }
 
 .voicing-count {
@@ -294,6 +294,31 @@ header h1 {
     font-weight: 700;
     color: var(--accent);
     letter-spacing: 1px;
+}
+
+.voicing-arrow {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--fg-mute);
+    background: transparent;
+    color: var(--fg-dim);
+    font-size: 1rem;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 0;
+    line-height: 32px;
+    text-align: center;
+}
+
+.voicing-arrow:hover {
+    color: var(--fg);
+    border-color: var(--fg-dim);
+}
+
+.voicing-arrow:active {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
 }
 
 .voicing-desc {
