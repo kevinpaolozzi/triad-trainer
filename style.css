@@ -984,18 +984,18 @@ header h1 {
 }
 
 .prog-explainer {
-    max-width: 760px;
+    max-width: 720px;
     margin: 1rem auto 0;
     border: 1px solid var(--fg-mute);
-    padding: 1.25rem 1.5rem;
+    padding: 1.5rem 1.75rem;
 }
 
 .prog-explainer h3 {
-    font-size: 0.7rem;
-    color: var(--fg);
+    font-size: 0.8rem;
+    color: var(--accent);
     text-transform: uppercase;
     letter-spacing: 2px;
-    padding: 0.75rem 0 0.35rem;
+    padding: 1.2rem 0 0.5rem;
 }
 
 .prog-explainer h3:first-child {
@@ -1003,27 +1003,27 @@ header h1 {
 }
 
 .prog-explainer p {
-    font-size: 0.78rem;
-    line-height: 1.65;
-    color: var(--fg-dim);
-    padding-bottom: 0.4rem;
+    font-size: 0.95rem;
+    line-height: 1.8;
+    color: var(--fg);
+    padding-bottom: 0.7rem;
 }
 
 .prog-explainer strong {
-    color: var(--fg);
-    font-weight: 500;
+    color: var(--accent);
+    font-weight: 700;
 }
 
 .prog-explainer em {
-    color: var(--fg);
+    color: var(--accent);
     font-style: normal;
     border-bottom: 1px dotted var(--fg-dim);
 }
 
 .prog-explainer .mono {
-    color: var(--fg);
-    background: #161616;
-    padding: 0 0.3rem;
+    color: #ffd9a0;
+    background: #1c1c1c;
+    padding: 0.1rem 0.35rem;
 }
 
 /* ===================== Mobile ===================== */
