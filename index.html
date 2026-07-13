@@ -18,6 +18,34 @@
         <div class="mode-switcher">
             <button class="mode-tab active" data-mode="training">Training</button>
             <button class="mode-tab" data-mode="reference">Reference</button>
+            <button class="mode-tab" data-mode="notemap">Note Map</button>
+            <button class="mode-tab" data-mode="quiz">Note Quiz</button>
+            <button class="mode-tab" data-mode="intervals">Intervals</button>
+            <button class="mode-tab" data-mode="progressions">Progressions</button>
+        </div>
+
+        <div class="global-settings">
+            <label>
+                Spelling
+                <div class="custom-select custom-select-small" id="spelling-select" data-value="auto">
+                    <button class="custom-select-trigger" type="button">Auto</button>
+                    <div class="custom-select-options">
+                        <div class="custom-select-option selected" data-value="auto">Auto</div>
+                        <div class="custom-select-option" data-value="sharp">Sharps</div>
+                        <div class="custom-select-option" data-value="flat">Flats</div>
+                    </div>
+                </div>
+            </label>
+            <label>
+                Labels
+                <div class="custom-select custom-select-small" id="labels-select" data-value="names">
+                    <button class="custom-select-trigger" type="button">Note names</button>
+                    <div class="custom-select-options">
+                        <div class="custom-select-option selected" data-value="names">Note names</div>
+                        <div class="custom-select-option" data-value="intervals">Intervals</div>
+                    </div>
+                </div>
+            </label>
         </div>
 
         <section id="reference-panel" style="display:none">
@@ -82,6 +110,7 @@
                 <canvas id="ref-canvas"></canvas>
                 <div id="ref-overlay" class="fb-overlay"></div>
             </div>
+            <div class="fb-hint">Click any position to hear it and see its name</div>
 
             <div id="ref-note-info" class="note-info"></div>
         </section>
@@ -125,7 +154,8 @@
                         <button class="custom-select-trigger" type="button">Closed</button>
                         <div class="custom-select-options">
                             <div class="custom-select-option selected" data-value="closed">Closed</div>
-                            <div class="custom-select-option" data-value="open">Open</div>
+                            <div class="custom-select-option" data-value="open">Open (spread)</div>
+                            <div class="custom-select-option" data-value="drop2">Drop-2 7th</div>
                         </div>
                     </div>
                 </label>
@@ -162,6 +192,17 @@
                         <button class="bpm-btn" id="bpm-plus">+</button>
                     </div>
                 </div>
+                <label>
+                    Beats/chord
+                    <div class="custom-select custom-select-small" id="train-beats-select" data-value="1">
+                        <button class="custom-select-trigger" type="button">1</button>
+                        <div class="custom-select-options">
+                            <div class="custom-select-option selected" data-value="1">1</div>
+                            <div class="custom-select-option" data-value="2">2</div>
+                            <div class="custom-select-option" data-value="4">4</div>
+                        </div>
+                    </div>
+                </label>
                     <div class="transport-wrap">
                         <button class="transport-btn" id="transport-btn">Play</button>
                     </div>
@@ -186,6 +227,329 @@
             </div>
 
             <div id="train-scale-bar" class="train-scale-bar"></div>
+        </section>
+
+        <section id="notemap-panel" style="display:none">
+            <div class="panel-header notemap-header">
+                <div class="controls">
+                    <label>
+                        Note
+                        <div class="custom-select" id="notemap-note-select" data-value="0">
+                            <button class="custom-select-trigger" type="button">C</button>
+                            <div class="custom-select-options"></div>
+                        </div>
+                    </label>
+                    <label>
+                        Octave shapes
+                        <div class="custom-select" id="notemap-octaves-select" data-value="on">
+                            <button class="custom-select-trigger" type="button">Show</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="on">Show</div>
+                                <div class="custom-select-option" data-value="off">Hide</div>
+                            </div>
+                        </div>
+                    </label>
+                </div>
+                <div class="notemap-title" id="notemap-title">C</div>
+                <div class="notemap-info" id="notemap-info"></div>
+            </div>
+
+            <div class="fretboard-wrap">
+                <canvas id="map-canvas"></canvas>
+                <div id="map-overlay" class="fb-overlay"></div>
+            </div>
+            <div class="fb-hint">Click any position to hear it — octave shapes are your shortcut to learning the whole neck</div>
+        </section>
+
+        <section id="quiz-panel" style="display:none">
+            <div class="panel-header quiz-header">
+                <div class="controls">
+                    <label>
+                        Quiz
+                        <div class="custom-select" id="quiz-type-select" data-value="find">
+                            <button class="custom-select-trigger" type="button">Find the note</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="find">Find the note</div>
+                                <div class="custom-select-option" data-value="name">Name the note</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Level
+                        <div class="custom-select" id="quiz-level-select" data-value="1">
+                            <button class="custom-select-trigger" type="button">1 — E+A naturals</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="1">1 — E+A naturals</div>
+                                <div class="custom-select-option" data-value="2">2 — E A D G naturals</div>
+                                <div class="custom-select-option" data-value="3">3 — All strings, naturals</div>
+                                <div class="custom-select-option" data-value="4">4 — All strings, all notes</div>
+                                <div class="custom-select-option" data-value="custom">Custom</div>
+                            </div>
+                        </div>
+                    </label>
+                    <div class="string-toggles-wrap">
+                        <span class="string-toggles-label">Strings</span>
+                        <div class="string-toggles" id="quiz-string-toggles">
+                            <button class="string-toggle active" data-string="0">E</button>
+                            <button class="string-toggle active" data-string="1">A</button>
+                            <button class="string-toggle" data-string="2">D</button>
+                            <button class="string-toggle" data-string="3">G</button>
+                            <button class="string-toggle" data-string="4">B</button>
+                            <button class="string-toggle" data-string="5">e</button>
+                        </div>
+                    </div>
+                    <label>
+                        Notes
+                        <div class="custom-select" id="quiz-notes-select" data-value="naturals">
+                            <button class="custom-select-trigger" type="button">Naturals</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="naturals">Naturals</div>
+                                <div class="custom-select-option" data-value="all">All notes</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Timer
+                        <div class="custom-select" id="quiz-timer-select" data-value="off">
+                            <button class="custom-select-trigger" type="button">Off</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="off">Off</div>
+                                <div class="custom-select-option" data-value="10">10 sec</div>
+                                <div class="custom-select-option" data-value="5">5 sec</div>
+                                <div class="custom-select-option" data-value="3">3 sec</div>
+                            </div>
+                        </div>
+                    </label>
+                    <div class="quiz-score-wrap">
+                        <span class="bpm-label">Session</span>
+                        <span class="quiz-score" id="quiz-score">0 / 0</span>
+                        <span class="quiz-streak" id="quiz-streak"></span>
+                    </div>
+                </div>
+
+                <div class="quiz-prompt" id="quiz-prompt">&nbsp;</div>
+                <div class="quiz-timer-bar" id="quiz-timer-bar" style="visibility:hidden">
+                    <div class="quiz-timer-fill" id="quiz-timer-fill"></div>
+                </div>
+            </div>
+
+            <div class="fretboard-wrap">
+                <canvas id="quiz-canvas"></canvas>
+                <div id="quiz-overlay" class="fb-overlay"></div>
+            </div>
+
+            <div class="quiz-answers" id="quiz-answers"></div>
+
+            <div class="quiz-stats-wrap">
+                <div class="quiz-stats-header">
+                    <span class="quiz-stats-title">Per-note accuracy (all time)</span>
+                    <button class="quiz-reset-btn" id="quiz-reset-btn">Reset stats</button>
+                </div>
+                <div class="quiz-stats" id="quiz-stats"></div>
+            </div>
+        </section>
+
+        <section id="intervals-panel" style="display:none">
+            <div class="panel-header quiz-header">
+                <div class="controls">
+                    <label>
+                        Mode
+                        <div class="custom-select" id="iv-mode-select" data-value="name-sight">
+                            <button class="custom-select-trigger" type="button">Name it (sight)</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="name-sight">Name it (sight)</div>
+                                <div class="custom-select-option" data-value="find-sight">Find it (sight)</div>
+                                <div class="custom-select-option" data-value="name-ear">Name it (ear)</div>
+                                <div class="custom-select-option" data-value="chord-ear">Chord quality (ear)</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Intervals
+                        <div class="custom-select" id="iv-range-select" data-value="basic">
+                            <button class="custom-select-trigger" type="button">2nds &amp; 3rds</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="basic">2nds &amp; 3rds</div>
+                                <div class="custom-select-option" data-value="to5">Up to 5th</div>
+                                <div class="custom-select-option" data-value="all">All intervals</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Chords
+                        <div class="custom-select" id="iv-chords-select" data-value="triads">
+                            <button class="custom-select-trigger" type="button">Triads</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="triads">Triads</div>
+                                <div class="custom-select-option" data-value="sevenths">Sevenths</div>
+                            </div>
+                        </div>
+                    </label>
+                    <div class="transport-wrap">
+                        <button class="transport-btn" id="iv-replay-btn">Replay &#9658;</button>
+                    </div>
+                    <div class="quiz-score-wrap">
+                        <span class="bpm-label">Session</span>
+                        <span class="quiz-score" id="iv-score">0 / 0</span>
+                        <span class="quiz-streak" id="iv-streak"></span>
+                    </div>
+                </div>
+
+                <div class="quiz-prompt" id="iv-prompt">&nbsp;</div>
+            </div>
+
+            <div class="fretboard-wrap">
+                <canvas id="iv-canvas"></canvas>
+                <div id="iv-overlay" class="fb-overlay"></div>
+            </div>
+
+            <div class="quiz-answers" id="iv-answers"></div>
+
+            <div class="quiz-stats-wrap">
+                <div class="quiz-stats-header">
+                    <span class="quiz-stats-title" id="iv-stats-title">Per-interval accuracy (all time)</span>
+                    <button class="quiz-reset-btn" id="iv-reset-btn">Reset stats</button>
+                </div>
+                <div class="quiz-stats" id="iv-stats"></div>
+            </div>
+        </section>
+
+        <section id="progressions-panel" style="display:none">
+            <div class="panel-header prog-header">
+                <div class="controls">
+                    <label>
+                        Key
+                        <div class="custom-select" id="prog-key-select" data-value="0">
+                            <button class="custom-select-trigger" type="button">C</button>
+                            <div class="custom-select-options"></div>
+                        </div>
+                    </label>
+                    <label>
+                        Scale
+                        <div class="custom-select" id="prog-scale-select" data-value="major">
+                            <button class="custom-select-trigger" type="button">Major</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="major">Major</div>
+                                <div class="custom-select-option" data-value="minor">Minor</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Progression
+                        <div class="custom-select" id="prog-select" data-value="0">
+                            <button class="custom-select-trigger" type="button">I – IV – V – I</button>
+                            <div class="custom-select-options"></div>
+                        </div>
+                    </label>
+                    <label>
+                        Chords
+                        <div class="custom-select" id="prog-chords-select" data-value="triads">
+                            <button class="custom-select-trigger" type="button">Triads</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="triads">Triads</div>
+                                <div class="custom-select-option" data-value="sevenths">Sevenths (drop-2)</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Notation
+                        <div class="custom-select" id="prog-notation-select" data-value="roman">
+                            <button class="custom-select-trigger" type="button">Roman numerals</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="roman">Roman numerals</div>
+                                <div class="custom-select-option" data-value="nash">Nashville numbers</div>
+                                <div class="custom-select-option" data-value="nash-blind">Nashville (names hidden)</div>
+                            </div>
+                        </div>
+                    </label>
+                    <div class="bpm-control">
+                        <span class="bpm-label">BPM</span>
+                        <div class="bpm-row">
+                            <button class="bpm-btn" id="prog-bpm-minus">&minus;</button>
+                            <span class="bpm-display" id="prog-bpm-display">80</span>
+                            <button class="bpm-btn" id="prog-bpm-plus">+</button>
+                        </div>
+                    </div>
+                    <label>
+                        Beats/chord
+                        <div class="custom-select custom-select-small" id="prog-beats-select" data-value="4">
+                            <button class="custom-select-trigger" type="button">4</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option" data-value="1">1</div>
+                                <div class="custom-select-option" data-value="2">2</div>
+                                <div class="custom-select-option selected" data-value="4">4</div>
+                            </div>
+                        </div>
+                    </label>
+                    <div class="transport-wrap">
+                        <button class="transport-btn" id="prog-transport-btn">Play</button>
+                    </div>
+                    <label class="sound-toggle">
+                        <input type="checkbox" id="prog-sound-toggle" checked> Sound
+                    </label>
+                </div>
+
+                <div class="voicing-now" id="prog-now">&nbsp;</div>
+
+                <div class="voicing-indicator">
+                    <button class="voicing-arrow" id="prog-prev">&larr;</button>
+                    <span class="voicing-count" id="prog-count">1 / 4</span>
+                    <button class="voicing-arrow" id="prog-next">&rarr;</button>
+                    <span class="voicing-desc" id="prog-desc"></span>
+                </div>
+            </div>
+
+            <div class="fretboard-wrap">
+                <canvas id="prog-canvas"></canvas>
+                <div id="prog-overlay" class="fb-overlay"></div>
+            </div>
+
+            <div id="prog-bar" class="prog-bar"></div>
+            <div class="fb-hint">Voicings are chosen for minimal movement — watch how little your hand needs to travel</div>
+
+            <div class="prog-explainer-toggle">
+                <button class="quiz-reset-btn" id="prog-explainer-btn">About the number system ▾</button>
+            </div>
+            <div class="prog-explainer" id="prog-explainer" style="display:none">
+                <h3>Why numbers instead of chord names?</h3>
+                <p>
+                    Both Roman numerals and Nashville numbers describe a chord by its
+                    <strong>scale degree</strong> — its position in the key — instead of its letter name.
+                    The payoff is that a progression becomes <strong>transposable</strong>: 1–4–5 is
+                    C–F–G in the key of C, G–C–D in the key of G, E♭–A♭–B♭ in E♭. Learn the numbers
+                    once and you know the progression in every key. This is how Nashville session
+                    players read charts and how musicians call tunes on the bandstand.
+                </p>
+                <h3>Roman numerals (the classroom system)</h3>
+                <p>
+                    Quality is shown by letter case: uppercase is major (<span class="mono">I, IV, V</span>),
+                    lowercase is minor (<span class="mono">ii, iii, vi</span>), and the diminished chord
+                    gets a degree sign (<span class="mono">vii°</span>). In C major:
+                    <span class="mono">I&nbsp;ii&nbsp;iii&nbsp;IV&nbsp;V&nbsp;vi&nbsp;vii°</span> =
+                    C&nbsp;Dm&nbsp;Em&nbsp;F&nbsp;G&nbsp;Am&nbsp;Bdim.
+                </p>
+                <h3>Nashville numbers (the working system)</h3>
+                <p>
+                    Plain Arabic numbers, always counted from the <strong>major scale of the key</strong>.
+                    Major is unmarked; minor gets a dash (<span class="mono">6-</span> is the vi chord);
+                    diminished gets <span class="mono">°</span>; sevenths are added as superscripts
+                    (<span class="mono">5⁷</span> dominant, <span class="mono">1Δ⁷</span> major 7,
+                    <span class="mono">2-⁷</span> minor 7). In C major:
+                    <span class="mono">1&nbsp;2-&nbsp;3-&nbsp;4&nbsp;5&nbsp;6-&nbsp;7°</span>.
+                </p>
+                <p>
+                    In a <strong>minor key</strong>, Nashville charts keep numbering from the parallel
+                    major, so the naturally lowered degrees are written with flats: the C minor
+                    progression Cm–A♭–E♭–B♭ is charted <span class="mono">1-&nbsp;♭6&nbsp;♭3&nbsp;♭7</span>.
+                </p>
+                <p>
+                    <strong>How to practice:</strong> switch Notation to
+                    <em>Nashville (names hidden)</em> — the chart shows only numbers, and the current
+                    chord's name is revealed as it plays. Then change the key and notice the numbers
+                    don't change. When you can hear "1&nbsp;5&nbsp;6-&nbsp;4" coming, you own the progression
+                    in all twelve keys.
+                </p>
+            </div>
         </section>
 
     </main>

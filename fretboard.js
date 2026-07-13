@@ -10,9 +10,13 @@ var NOTE_COLORS = {
     root:  [0.93, 0.55, 0.15],  // #ed8c26 orange
     third: [0.70, 0.70, 0.70],  // #b3b3b3 light grey
     fifth: [0.50, 0.50, 0.50],  // #808080 mid grey
+    seventh: [0.55, 0.45, 0.72], // muted violet — 7th of a chord
     user:  [0.85, 0.63, 0.19],  // #d8a030
     pent:  [0.85, 0.63, 0.19],  // gold/amber for pentatonic
-    dim:   [0.35, 0.35, 0.35]   // dimmed
+    dim:   [0.35, 0.35, 0.35],  // dimmed
+    correct: [0.30, 0.78, 0.42], // green — quiz correct
+    wrong:   [0.86, 0.28, 0.28], // red — quiz wrong
+    quiz:    [0.40, 0.62, 0.90]  // blue — quiz target dot
 };
 
 // ===================== Shader Sources =====================
