@@ -22,6 +22,7 @@
             <button class="mode-tab" data-mode="quiz">Note Quiz</button>
             <button class="mode-tab" data-mode="intervals">Intervals</button>
             <button class="mode-tab" data-mode="progressions">Progressions</button>
+            <button class="mode-tab" data-mode="nashville">Nashville</button>
         </div>
 
         <div class="global-settings">
@@ -549,6 +550,73 @@
                     don't change. When you can hear "1&nbsp;5&nbsp;6-&nbsp;4" coming, you own the progression
                     in all twelve keys.
                 </p>
+            </div>
+        </section>
+
+        <section id="nash-panel" style="display:none">
+            <div class="panel-header quiz-header">
+                <div class="controls">
+                    <label>
+                        Drill
+                        <div class="custom-select" id="nash-mode-select" data-value="n2c">
+                            <button class="custom-select-trigger" type="button">Number → Chord</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="n2c">Number → Chord</div>
+                                <div class="custom-select-option" data-value="c2n">Chord → Number</div>
+                                <div class="custom-select-option" data-value="chart">Chart reading</div>
+                                <div class="custom-select-option" data-value="ear">Progression by ear</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Keys
+                        <div class="custom-select" id="nash-scale-select" data-value="major">
+                            <button class="custom-select-trigger" type="button">Major</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="major">Major</div>
+                                <div class="custom-select-option" data-value="minor">Minor</div>
+                                <div class="custom-select-option" data-value="both">Both</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Chords
+                        <div class="custom-select" id="nash-chords-select" data-value="triads">
+                            <button class="custom-select-trigger" type="button">Triads</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="triads">Triads</div>
+                                <div class="custom-select-option" data-value="sevenths">Sevenths</div>
+                            </div>
+                        </div>
+                    </label>
+                    <div class="transport-wrap">
+                        <button class="transport-btn" id="nash-replay-btn">Replay &#9658;</button>
+                    </div>
+                    <div class="quiz-score-wrap">
+                        <span class="bpm-label">Session</span>
+                        <span class="quiz-score" id="nash-score">0 / 0</span>
+                        <span class="quiz-streak" id="nash-streak"></span>
+                    </div>
+                </div>
+
+                <div class="quiz-prompt" id="nash-prompt">&nbsp;</div>
+            </div>
+
+            <div id="nash-chart" class="prog-bar"></div>
+
+            <div class="fretboard-wrap">
+                <canvas id="nash-canvas"></canvas>
+                <div id="nash-overlay" class="fb-overlay"></div>
+            </div>
+
+            <div class="quiz-answers" id="nash-answers"></div>
+
+            <div class="quiz-stats-wrap">
+                <div class="quiz-stats-header">
+                    <span class="quiz-stats-title" id="nash-stats-title">Per-number accuracy (all time)</span>
+                    <button class="quiz-reset-btn" id="nash-reset-btn">Reset stats</button>
+                </div>
+                <div class="quiz-stats" id="nash-stats"></div>
             </div>
         </section>
 

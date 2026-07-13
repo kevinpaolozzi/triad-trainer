@@ -763,7 +763,7 @@ header h1 {
     font-weight: 700;
     color: var(--accent);
     letter-spacing: 2px;
-    text-transform: uppercase;
+    /* No uppercase transform: prompts contain chord symbols (Fm ≠ FM) */
     padding: 0.9rem 0 0.4rem;
     min-height: 2.4rem;
 }

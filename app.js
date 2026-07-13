@@ -180,6 +180,7 @@ function refreshAllPanels() {
     if (quizRenderer) renderQuizStats();
     if (ivRenderer) renderIvStats();
     if (progRenderer) buildProgression();
+    if (nashRenderer) renderNashStats();
 }
 
 // ===================== Shared Audio =====================
@@ -1915,6 +1916,41 @@ function avgFret(voicing) {
     return sum / voicing.length;
 }
 
+// Assign a voice-led voicing to each chord in place: open with a mid-neck
+// grip, then always take the nearest voicing to the previous chord.
+function voiceLeadChords(chords, useSevenths) {
+    var prevVoicing = null, prevSet = null;
+    for (var i = 0; i < chords.length; i++) {
+        var pool = useSevenths
+            ? getDrop2SeventhVoicingsForChord(chords[i].root, chords[i].quality)
+            : getAllVoicingsForChord(chords[i].root, chords[i].quality);
+        var best = null, bestCost = Infinity;
+        for (var p = 0; p < pool.length; p++) {
+            var cost;
+            if (!prevVoicing) {
+                cost = Math.abs(avgFret(pool[p].voicing) - 5);
+            } else {
+                cost = Math.abs(avgFret(pool[p].voicing) - avgFret(prevVoicing))
+                     + 1.2 * Math.abs(pool[p].stringSetIndex - prevSet);
+            }
+            if (cost < bestCost) { bestCost = cost; best = pool[p]; }
+        }
+        chords[i].voicing = best.voicing;
+        chords[i].stringSetIndex = best.stringSetIndex;
+        chords[i].inversion = best.inversion;
+        chords[i].stringSetLabel = (useSevenths ? FOUR_STRING_SET_LABELS : STRING_SET_LABELS)[best.stringSetIndex];
+        prevVoicing = best.voicing;
+        prevSet = best.stringSetIndex;
+    }
+}
+
+// One nicely-placed voicing for a standalone chord reveal
+function bestMidVoicing(root, quality, useSevenths) {
+    var single = [{ root: root, quality: quality }];
+    voiceLeadChords(single, useSevenths);
+    return single[0];
+}
+
 // Voice-leading: pick each chord's voicing to minimize hand movement
 function buildProgression() {
     if (!progRenderer) return;
@@ -1943,30 +1979,7 @@ function buildProgression() {
         chords.push(chord);
     }
 
-    // Assign voicings greedily: start mid-neck, then nearest voicing each step
-    var prevVoicing = null, prevSet = null;
-    for (var i = 0; i < chords.length; i++) {
-        var pool = useSevenths
-            ? getDrop2SeventhVoicingsForChord(chords[i].root, chords[i].quality)
-            : getAllVoicingsForChord(chords[i].root, chords[i].quality);
-        var best = null, bestCost = Infinity;
-        for (var p = 0; p < pool.length; p++) {
-            var cost;
-            if (!prevVoicing) {
-                cost = Math.abs(avgFret(pool[p].voicing) - 5); // open with a mid-neck grip
-            } else {
-                cost = Math.abs(avgFret(pool[p].voicing) - avgFret(prevVoicing))
-                     + 1.2 * Math.abs(pool[p].stringSetIndex - prevSet);
-            }
-            if (cost < bestCost) { bestCost = cost; best = pool[p]; }
-        }
-        chords[i].voicing = best.voicing;
-        chords[i].stringSetIndex = best.stringSetIndex;
-        chords[i].inversion = best.inversion;
-        chords[i].stringSetLabel = (useSevenths ? FOUR_STRING_SET_LABELS : STRING_SET_LABELS)[best.stringSetIndex];
-        prevVoicing = best.voicing;
-        prevSet = best.stringSetIndex;
-    }
+    voiceLeadChords(chords, useSevenths);
 
     prog.chords = chords;
     prog.index = 0;
@@ -2128,6 +2141,391 @@ function stopProgression() {
     }
 }
 
+// ===================== Nashville Training =====================
+
+var nashRenderer = null;
+var nash = {
+    target: null,
+    answering: false,
+    session: { right: 0, total: 0, streak: 0, best: 0 },
+    nextTimeout: null
+};
+
+var NASH_STATS_STORAGE_KEY = 'triadTrainerNashStats';
+
+// Ear-training progressions (major key, degree indices). Chosen to be
+// aurally distinctive from one another.
+var NASH_EAR_PATTERNS = [
+    { degrees: [0, 3, 4, 0] },   // 1 4 5 1
+    { degrees: [0, 4, 5, 3] },   // 1 5 6- 4
+    { degrees: [0, 5, 3, 4] },   // 1 6- 4 5
+    { degrees: [1, 4, 0, 0] },   // 2- 5 1 1
+    { degrees: [0, 3, 0, 4] },   // 1 4 1 5
+    { degrees: [5, 3, 0, 4] }    // 6- 4 1 5
+];
+
+function loadNashStats() {
+    try { return JSON.parse(localStorage.getItem(NASH_STATS_STORAGE_KEY)) || {}; }
+    catch (e) { return {}; }
+}
+
+function recordNashResult(key, correct) {
+    var stats = loadNashStats();
+    if (!stats[key]) stats[key] = { r: 0, w: 0 };
+    if (correct) stats[key].r++;
+    else stats[key].w++;
+    try { localStorage.setItem(NASH_STATS_STORAGE_KEY, JSON.stringify(stats)); } catch (e) {}
+}
+
+function nashPatternLabel(degrees, scale) {
+    var diatonic = getScaleTriads(0, scale);
+    var parts = [];
+    for (var i = 0; i < degrees.length; i++) {
+        parts.push(getNashvilleNumber(degrees[i], scale, diatonic[degrees[i]].quality));
+    }
+    return parts.join(' ');
+}
+
+function shuffled(arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+}
+
+function initNashPanel() {
+    var canvas = document.getElementById('nash-canvas');
+    var overlay = document.getElementById('nash-overlay');
+    nashRenderer = new FretboardRenderer(canvas, overlay);
+
+    nashRenderer.setInteractive(true, function(string, fret) {
+        playPositionSound(string, fret);
+    });
+
+    document.getElementById('nash-mode-select')._onChange = newNashQuestion;
+    document.getElementById('nash-scale-select')._onChange = newNashQuestion;
+    document.getElementById('nash-chords-select')._onChange = newNashQuestion;
+    document.getElementById('nash-replay-btn').addEventListener('click', playNashAudio);
+    document.getElementById('nash-reset-btn').addEventListener('click', function() {
+        localStorage.removeItem(NASH_STATS_STORAGE_KEY);
+        renderNashStats();
+    });
+
+    renderNashStats();
+    newNashQuestion();
+}
+
+function nashKeyName(keyPc, scale) {
+    return spellScale(keyPc, scale).names[0] + ' ' + (scale === 'major' ? 'major' : 'minor');
+}
+
+// Show one chord's voicing on the nash fretboard, colored by chord degree
+function renderNashChord(chordInfo) {
+    var chordNotes = getChordNotes(chordInfo.root, chordInfo.quality);
+    var spelling = spellChord(chordInfo.root, chordInfo.quality);
+    var notes = [];
+    for (var i = 0; i < chordInfo.voicing.length; i++) {
+        var pos = chordInfo.voicing[i];
+        var pc = (STRING_TUNING[pos.string] + pos.fret) % 12;
+        var idx = chordNotes.indexOf(pc);
+        notes.push({
+            string: pos.string, fret: pos.fret,
+            color: INTERVAL_COLOR_KEYS[idx], label: spelling.map[pc],
+            glow: idx === 0, opacity: 1.0, size: 22
+        });
+    }
+    nashRenderer.setActiveStrings([0, 1, 2, 3, 4, 5]);
+    nashRenderer.setVoicingGroups([chordInfo.voicing]);
+    nashRenderer.setNotes(notes);
+}
+
+function clearNashFretboard() {
+    nashRenderer.setActiveStrings([0, 1, 2, 3, 4, 5]);
+    nashRenderer.setVoicingGroups([]);
+    nashRenderer.setNotes([]);
+}
+
+function newNashQuestion() {
+    if (!nashRenderer) return;
+    if (nash.nextTimeout) { clearTimeout(nash.nextTimeout); nash.nextTimeout = null; }
+    nash.answering = true;
+
+    var mode = document.getElementById('nash-mode-select').dataset.value;
+    var scaleSetting = document.getElementById('nash-scale-select').dataset.value;
+    var useSevenths = document.getElementById('nash-chords-select').dataset.value === 'sevenths';
+    var scale = scaleSetting === 'both' ? (Math.random() < 0.5 ? 'major' : 'minor') : scaleSetting;
+    var keyPc = Math.floor(Math.random() * 12);
+
+    var prompt = document.getElementById('nash-prompt');
+    prompt.classList.remove('correct', 'wrong');
+    document.getElementById('nash-chart').innerHTML = '';
+
+    var stats = loadNashStats();
+    var diatonic = useSevenths ? getScaleSevenths(keyPc, scale) : getScaleTriads(keyPc, scale);
+
+    if (mode === 'ear') {
+        // Fixed major triads for the ear drill — the patterns are the subject
+        scale = 'major';
+        var cands = NASH_EAR_PATTERNS.map(function(p, i) { return { key: 'p|' + i, idx: i }; });
+        var picked = weightedPick(cands, stats, nash.target && nash.target.key);
+        var pattern = NASH_EAR_PATTERNS[picked.idx];
+        var triads = getScaleTriads(keyPc, 'major');
+        var chords = pattern.degrees.map(function(d) {
+            var c = triads[d];
+            return { root: c.root, quality: c.quality, label: c.label, degree: d };
+        });
+        voiceLeadChords(chords, false);
+        nash.target = { mode: mode, key: picked.key, patternIdx: picked.idx, keyPc: keyPc, scale: scale, chords: chords };
+
+        prompt.textContent = 'Listen — which progression is this?';
+        clearNashFretboard();
+        buildNashAnswerButtons(NASH_EAR_PATTERNS.map(function(p, i) {
+            return { value: String(i), label: nashPatternLabel(p.degrees, 'major') };
+        }));
+        playNashAudio();
+    } else if (mode === 'chart') {
+        // Random 4-chord chart starting on the tonic, no adjacent repeats
+        var degrees = [0];
+        while (degrees.length < 4) {
+            var d = Math.floor(Math.random() * 7);
+            if (d !== degrees[degrees.length - 1]) degrees.push(d);
+        }
+        var chords = degrees.map(function(d) {
+            var c = diatonic[d];
+            return { root: c.root, quality: c.quality, label: c.label, degree: d,
+                     nashville: getNashvilleNumber(d, scale, c.quality) };
+        });
+        voiceLeadChords(chords, useSevenths);
+        nash.target = { mode: mode, keyPc: keyPc, scale: scale, chords: chords, step: 0, stepRight: 0 };
+
+        prompt.textContent = 'Key of ' + nashKeyName(keyPc, scale) + ' — name chord 1 of 4';
+        renderNashChart();
+        clearNashFretboard();
+        buildNashAnswerButtons(shuffled(diatonic.map(function(c, d) {
+            return { value: String(d), label: c.label };
+        })));
+    } else {
+        // n2c / c2n: one diatonic chord, weighted by degree+scale
+        var cands = [];
+        for (var d = 0; d < 7; d++) cands.push({ key: 'd|' + scale + '|' + d, degree: d });
+        var picked = weightedPick(cands, stats, nash.target && nash.target.key);
+        var c = diatonic[picked.degree];
+        var numeral = getNashvilleNumber(picked.degree, scale, c.quality);
+        var chordInfo = bestMidVoicing(c.root, c.quality, useSevenths);
+        chordInfo.label = c.label;
+        nash.target = {
+            mode: mode, key: picked.key, degree: picked.degree, keyPc: keyPc, scale: scale,
+            label: c.label, numeral: numeral, chordInfo: chordInfo
+        };
+
+        if (mode === 'n2c') {
+            prompt.textContent = 'Key of ' + nashKeyName(keyPc, scale) + ' — which chord is ' + numeral + '?';
+            clearNashFretboard();
+            buildNashAnswerButtons(shuffled(diatonic.map(function(dc, d) {
+                return { value: String(d), label: dc.label };
+            })));
+        } else {
+            prompt.textContent = 'Key of ' + nashKeyName(keyPc, scale) + ' — what number is ' + c.label + '?';
+            renderNashChord(chordInfo);
+            playNashAudio();
+            buildNashAnswerButtons(diatonic.map(function(dc, d) {
+                return { value: String(d), label: getNashvilleNumber(d, scale, dc.quality) };
+            }));
+        }
+    }
+
+    updateNashScoreDisplay();
+    renderNashStats();
+}
+
+function renderNashChart(revealUpTo) {
+    var t = nash.target;
+    var html = '';
+    for (var i = 0; i < t.chords.length; i++) {
+        var revealed = revealUpTo !== undefined ? i <= revealUpTo : i < t.step;
+        html += '<div class="prog-chip nash' + (i === t.step && revealUpTo === undefined ? ' active' : '') + '">';
+        html += '<span class="prog-numeral">' + t.chords[i].nashville + '</span>';
+        html += '<span class="prog-name">' + (revealed ? t.chords[i].label : '?') + '</span>';
+        html += '</div>';
+    }
+    document.getElementById('nash-chart').innerHTML = html;
+}
+
+function playNashAudio() {
+    if (!nash.target) return;
+    var t = nash.target;
+    var ctx = ensureAudioContext();
+    if (t.mode === 'ear' && t.chords) {
+        for (var i = 0; i < t.chords.length; i++) {
+            scheduleChordTones(t.chords[i].voicing, ctx.currentTime + 0.05 + i * 0.9);
+        }
+    } else if (t.chordInfo) {
+        scheduleChordTones(t.chordInfo.voicing, ctx.currentTime + 0.05);
+    }
+}
+
+function buildNashAnswerButtons(options) {
+    var wrap = document.getElementById('nash-answers');
+    wrap.innerHTML = '';
+    for (var i = 0; i < options.length; i++) {
+        (function(opt) {
+            var btn = document.createElement('button');
+            btn.className = 'quiz-answer-btn';
+            btn.dataset.value = opt.value;
+            btn.textContent = opt.label;
+            btn.addEventListener('click', function() { handleNashAnswer(opt.value, btn); });
+            wrap.appendChild(btn);
+        })(options[i]);
+    }
+}
+
+function updateNashScoreDisplay() {
+    document.getElementById('nash-score').textContent = nash.session.right + ' / ' + nash.session.total;
+    var streakEl = document.getElementById('nash-streak');
+    streakEl.textContent = nash.session.streak >= 3 ? 'streak ' + nash.session.streak : '';
+}
+
+function scoreNashAnswer(correct) {
+    nash.session.total++;
+    if (correct) {
+        nash.session.right++;
+        nash.session.streak++;
+        if (nash.session.streak > nash.session.best) nash.session.best = nash.session.streak;
+    } else {
+        nash.session.streak = 0;
+    }
+    updateNashScoreDisplay();
+}
+
+function markNashButtons(correctValue, clickedBtn, correct) {
+    var allBtns = document.querySelectorAll('#nash-answers .quiz-answer-btn');
+    for (var i = 0; i < allBtns.length; i++) {
+        allBtns[i].disabled = true;
+        if (allBtns[i].dataset.value === correctValue) allBtns[i].classList.add('correct');
+    }
+    if (!correct) clickedBtn.classList.add('wrong');
+}
+
+function handleNashAnswer(value, btn) {
+    if (!nash.target || !nash.answering) return;
+    var t = nash.target;
+    var prompt = document.getElementById('nash-prompt');
+
+    if (t.mode === 'chart') {
+        // Per-step answering; buttons stay live between steps
+        var current = t.chords[t.step];
+        var correct = (parseInt(value) === current.degree);
+        recordNashResult('d|' + t.scale + '|' + current.degree, correct);
+        scoreNashAnswer(correct);
+        renderNashChord(current);
+
+        if (!correct) {
+            btn.classList.add('wrong');
+            setTimeout(function() { btn.classList.remove('wrong'); }, 600);
+        }
+
+        t.step++;
+        if (t.step < t.chords.length) {
+            renderNashChart();
+            prompt.classList.remove('correct', 'wrong');
+            prompt.classList.add(correct ? 'correct' : 'wrong');
+            prompt.textContent = (correct ? '✓ ' + current.label : '✗ that was ' + current.label) +
+                ' — name chord ' + (t.step + 1) + ' of 4';
+        } else {
+            nash.answering = false;
+            renderNashChart(t.chords.length - 1);
+            prompt.classList.add(correct ? 'correct' : 'wrong');
+            prompt.textContent = (correct ? '✓ ' + current.label : '✗ that was ' + current.label) + ' — chart done';
+            var allBtns = document.querySelectorAll('#nash-answers .quiz-answer-btn');
+            for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = true;
+            nash.nextTimeout = setTimeout(newNashQuestion, 2200);
+        }
+        renderNashStats();
+        return;
+    }
+
+    nash.answering = false;
+    var correct, correctValue;
+
+    if (t.mode === 'ear') {
+        correct = (parseInt(value) === t.patternIdx);
+        correctValue = String(t.patternIdx);
+        recordNashResult(t.key, correct);
+        // Reveal: chart with names + first chord on the fretboard
+        t.chords.forEach(function(c, i) {
+            c.nashville = getNashvilleNumber(c.degree, 'major', c.quality);
+        });
+        t.step = t.chords.length;
+        renderNashChart(t.chords.length - 1);
+        renderNashChord(t.chords[0]);
+        prompt.textContent = (correct ? 'Correct — ' : 'It was ') +
+            nashPatternLabel(NASH_EAR_PATTERNS[t.patternIdx].degrees, 'major') +
+            ' in ' + spellScale(t.keyPc, 'major').names[0];
+    } else {
+        correct = (parseInt(value) === t.degree);
+        correctValue = String(t.degree);
+        recordNashResult(t.key, correct);
+        renderNashChord(t.chordInfo);
+        if (t.mode === 'n2c') playNashAudio();
+        prompt.textContent = correct
+            ? 'Correct — ' + t.numeral + ' in ' + nashKeyName(t.keyPc, t.scale) + ' is ' + t.label
+            : t.numeral + ' in ' + nashKeyName(t.keyPc, t.scale) + ' is ' + t.label;
+    }
+
+    markNashButtons(correctValue, btn, correct);
+    scoreNashAnswer(correct);
+    renderNashStats();
+    prompt.classList.add(correct ? 'correct' : 'wrong');
+    nash.nextTimeout = setTimeout(newNashQuestion, correct ? 1400 : 2600);
+}
+
+function renderNashStats() {
+    var wrap = document.getElementById('nash-stats');
+    if (!wrap) return;
+    var mode = document.getElementById('nash-mode-select').dataset.value;
+    var scaleSetting = document.getElementById('nash-scale-select').dataset.value;
+    var stats = loadNashStats();
+    var cells = [];
+
+    if (mode === 'ear') {
+        document.getElementById('nash-stats-title').textContent = 'Per-progression accuracy (all time)';
+        cells = NASH_EAR_PATTERNS.map(function(p, i) {
+            return { key: 'p|' + i, label: nashPatternLabel(p.degrees, 'major') };
+        });
+    } else {
+        document.getElementById('nash-stats-title').textContent = 'Per-number accuracy (all time)';
+        var scales = scaleSetting === 'both' ? ['major', 'minor'] : [scaleSetting];
+        for (var s = 0; s < scales.length; s++) {
+            var diatonic = getScaleTriads(0, scales[s]);
+            for (var d = 0; d < 7; d++) {
+                cells.push({
+                    key: 'd|' + scales[s] + '|' + d,
+                    label: getNashvilleNumber(d, scales[s], diatonic[d].quality)
+                });
+            }
+        }
+    }
+
+    var html = '';
+    for (var i = 0; i < cells.length; i++) {
+        var st = stats[cells[i].key];
+        var total = st ? st.r + st.w : 0;
+        var cls = '', pctText = '—';
+        if (total > 0) {
+            var pct = Math.round((st.r / total) * 100);
+            pctText = pct + '%';
+            cls = pct >= 85 ? 'good' : (pct >= 60 ? 'mid' : 'bad');
+        }
+        html += '<div class="quiz-stat-cell ' + cls + '">';
+        html += '<span class="stat-note">' + cells[i].label + '</span>';
+        html += '<span class="stat-pct">' + pctText + '</span>';
+        html += '</div>';
+    }
+    wrap.innerHTML = html;
+}
+
 // ===================== Mode Switcher =====================
 
 var PANELS = {
@@ -2136,7 +2534,8 @@ var PANELS = {
     notemap:      { el: 'notemap-panel' },
     quiz:         { el: 'quiz-panel' },
     intervals:    { el: 'intervals-panel' },
-    progressions: { el: 'progressions-panel' }
+    progressions: { el: 'progressions-panel' },
+    nashville:    { el: 'nash-panel' }
 };
 
 function activateMode(mode) {
@@ -2150,6 +2549,7 @@ function activateMode(mode) {
     if (mode !== 'quiz') stopQuizTimers();
     if (mode !== 'progressions' && prog.playing) stopProgression();
     if (mode !== 'intervals' && iv.nextTimeout) { clearTimeout(iv.nextTimeout); iv.nextTimeout = null; }
+    if (mode !== 'nashville' && nash.nextTimeout) { clearTimeout(nash.nextTimeout); nash.nextTimeout = null; }
 
     // Lazy-init panels so hidden canvases are never sized at zero width
     if (mode === 'training') {
@@ -2195,6 +2595,13 @@ function activateMode(mode) {
             progRenderer.resize();
             showProgChord(prog.index);
         }
+    } else if (mode === 'nashville') {
+        if (!nashRenderer) {
+            initNashPanel();
+        } else {
+            nashRenderer.resize();
+            newNashQuestion();
+        }
     }
 }
 
@@ -2227,6 +2634,7 @@ window.addEventListener('resize', function() {
         if (quizRenderer) { quizRenderer.resize(); }
         if (ivRenderer) { ivRenderer.resize(); }
         if (progRenderer) { progRenderer.resize(); }
+        if (nashRenderer) { nashRenderer.resize(); }
         if (currentMode === 'reference') updateReference();
         if (currentMode === 'notemap') updateNoteMap();
         if (currentMode === 'progressions') showProgChord(prog.index);
