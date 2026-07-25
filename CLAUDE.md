@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A guitar theory training web app (fretboard notes, triads, sevenths, intervals, progressions, Nashville numbers). Vanilla JS, no build step, no dependencies, no framework.
+A guitar theory training web app organized as Learn → Drill → Track: a 13-lesson interactive course, an interactive circle of fifths, drill tabs (voicings, fretboard notes, intervals, progressions, Nashville numbers), reference/note-map explorers, and a progress dashboard. Vanilla JS, no build step, no dependencies, no framework.
 
 ## Commands
 
@@ -36,18 +36,20 @@ console.log(ctx.spellChord(0, 'min7').names);  // [ 'C', 'E♭', 'G', 'B♭' ]
 
 ## Architecture
 
-Three scripts loaded in order as globals (order matters — later files reference earlier ones):
+Four scripts loaded in order as globals (order matters — later files reference earlier ones):
 
-1. **music-data.js** — pure music theory engine, zero DOM. Spelling engine (letter-walk enharmonic spelling with sharp/flat/auto preference), chord/scale/pentatonic definitions, voicing search, diatonic chord generation, Nashville numbers.
-2. **fretboard.js** — `FretboardRenderer`: WebGL canvas for the board/dots plus an absolutely-positioned HTML overlay for all text labels. `setNotes()` diffs against current notes by string+fret and animates opacity; `setVoicingGroups()` draws connector lines; `setInteractive(true, cb)` maps clicks to (string, fret). Colors are named keys in `NOTE_COLORS` (root/third/fifth/seventh/correct/wrong/quiz/...).
-3. **app.js** — all UI. Seven tab panels (training, reference, notemap, quiz, intervals, progressions, nashville), each with its own renderer instance and module-level state object.
+1. **music-data.js** — pure music theory engine, zero DOM. Spelling engine (letter-walk enharmonic spelling with sharp/flat/auto preference; cost ties break toward the root nearer the center of the line of fifths, then sharps), chord/scale/pentatonic definitions (incl. sus2/sus4 and maj6/min6 — non-tertian chords need a `CHORD_STEPS` entry so letters walk correctly), voicing search (closed/open/drop-2/shell), diatonic chord generation, Nashville numbers, circle-of-fifths data (`CIRCLE_OF_FIFTHS`, `keySignatureLabel`, `relativeMinorName`, `degreeFunctionName`).
+2. **learn-content.js** — pure data: the `LESSONS` array for the Course tab (prose sections as HTML strings, declarative fretboard demo descriptors, practice deep-links). No DOM, no logic.
+3. **fretboard.js** — `FretboardRenderer`: WebGL canvas for the board/dots plus an absolutely-positioned HTML overlay for all text labels. `setNotes()` diffs against current notes by string+fret and animates opacity; `setVoicingGroups()` draws connector lines; `setInteractive(true, cb)` maps clicks to (string, fret). Colors are named keys in `NOTE_COLORS` (root/third/fifth/seventh/correct/wrong/quiz/...) — or raw `[r,g,b]` arrays (used by the Progress heatmap).
+4. **app.js** — all UI. Ten tab panels in a grouped nav (Learn: learn/circle · Explore: reference/notemap · Drill: training/quiz/intervals/progressions/nashville · Track: progress), each with its own renderer instance and module-level state object. **Course (`learn`) is the landing tab** and the only panel initialized at load.
 
 ### Conventions the code depends on
 
 - **String indexing**: 0 = low E through 5 = high e, everywhere (`STRING_TUNING` is MIDI note numbers). Display flipping happens only inside the renderer (`_displayIndex`).
 - **Spelling**: never use `NOTE_NAMES`/`SHARP_NAMES` directly for display. Use `spellChord()`/`spellScale()`/`spellPentatonic()` (context-correct: C minor = C E♭ G) or `pcDisplayName()`/`pcOptionLabel()` for context-free labels. The global pref is set via `setSpellingPref()` from the Spelling dropdown.
 - **Inversions are named by bass note** — including open/spread triads and drop-2 sevenths, which are *derived* from a closed shape but labeled by what's actually in the bass. Don't "fix" this back to derivation order.
-- **Terminology**: 3-note spread voicings are "open (spread) triads"; "drop-2" is reserved for the 4-note seventh-chord shapes.
+- **Terminology**: 3-note spread voicings are "open (spread) triads"; "drop-2" is reserved for the 4-note seventh-chord shapes; "shells" are R-7-3 grips (root position by definition — don't add inversions to them).
+- **maj6/min6 live in `SEVENTH_INTERVALS`** deliberately: that table drives all 4-note-chord logic (drop-2 shapes, inversion counts, quality-select grouping), and 6th chords need all of it.
 - **Chord-symbol case matters**: never apply `text-transform: uppercase` to text containing chord labels (Cm7 would render as CM7). This bug has been fixed three times in three places.
 - **Fonts**: Druk Wide (self-hosted in `Druk/`) has no ♭ ♯ ° ⁷ glyphs — those characters silently fall back mid-word. Use JetBrains Mono for any text containing accidentals or chord symbols; keep Druk for short ASCII display text.
 
@@ -57,7 +59,9 @@ Three scripts loaded in order as globals (order matters — later files referenc
 - **Lazy panel init**: renderers are created the first time a tab is opened (`activateMode`), never at load for hidden panels — a hidden canvas has zero width and renders blank. Register new panels in `PANELS`, `activateMode`, the resize handler, and `refreshAllPanels` (which re-renders everything after a spelling/label-mode change).
 - **Audio**: one shared AudioContext (`ensureAudioContext()`, created on user gesture). `playNoteSound()` is a Karplus-Strong pluck; `scheduleChordTones()` strums a voicing. Metronome-style playback uses a 25ms `setInterval` scheduler with a 100ms lookahead scheduling audio on the AudioContext clock, plus `setTimeout` aligned to each beat for the visual update.
 - **Quizzes** (Note Quiz, Intervals, Nashville all follow the same shape): weighted target selection via error-rate stats (`weightedPick`), stats persisted to localStorage under `triadTrainer*Stats` keys, answering flag + `nextTimeout` for auto-advance, green/red reveal on the fretboard, per-item accuracy grid.
-- **Voice leading**: `voiceLeadChords()` assigns each chord in a sequence the voicing nearest the previous one (avg-fret distance + string-set-change penalty). Used by Progressions and the Nashville ear drill.
+- **Voice leading**: `voiceLeadChords()` assigns each chord in a sequence the voicing nearest the previous one (avg-fret distance + string-set-change penalty). Used by Progressions, the Nashville ear drill, and Course progression demos.
+- **Course lessons**: `showLesson()` renders a `LESSONS` entry; `runLearnDemo()` interprets its declarative `board` descriptors (`pc`/`chromatic`/`interval`/`chord`/`scale`/`progression`). Lesson-completion state lives in localStorage under `triadTrainerLearnDone`. Practice deep-links call `switchToMode()` (which clicks the real tab button so active states stay in sync) and then apply optional `selects` presets via `setSelectValue` + `_onChange`.
+- **Progress dashboard** reads the three drill stat stores read-only and derives weakest items (`weakestItems`, ≥3 attempts) plus a fretboard heatmap colored by raw-RGB accuracy lerp. It must keep working when stores are empty.
 
 ## Commits
 

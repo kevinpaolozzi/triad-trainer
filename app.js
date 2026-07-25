@@ -6,7 +6,7 @@ var mapRenderer = null;
 var quizRenderer = null;
 
 var selectedStrings = [2, 3, 4];
-var currentMode = 'training';
+var currentMode = 'learn';
 
 // Global display settings
 var labelMode = 'names'; // 'names' | 'intervals'
@@ -181,6 +181,12 @@ function refreshAllPanels() {
     if (ivRenderer) renderIvStats();
     if (progRenderer) buildProgression();
     if (nashRenderer) renderNashStats();
+    if (learnRenderer) showLesson(learn.index);
+    if (circleInited) {
+        buildCircleWheel();
+        selectCircleKey(circleSelectedPc);
+    }
+    if (progressRenderer) renderProgressDashboard();
 }
 
 // ===================== Shared Audio =====================
@@ -370,8 +376,14 @@ function updateReference() {
     renderShowAll(rootIndex, quality, selectedStrings, inversion);
 }
 
+var OVERLAY_LABELS = {
+    major: 'Major pentatonic',
+    minor: 'Minor pentatonic',
+    majorscale: 'Major scale',
+    minorscale: 'Minor scale'
+};
+
 function updatePentatonicLabels(rootIndex) {
-    var rootName = spellTriad(rootIndex, 'major').rootName;
     var sel = document.getElementById('pentatonic-select');
     var opts = sel.querySelectorAll('.custom-select-option');
     var trigger = sel.querySelector('.custom-select-trigger');
@@ -380,8 +392,8 @@ function updatePentatonicLabels(rootIndex) {
     for (var i = 0; i < opts.length; i++) {
         var val = opts[i].dataset.value;
         if (val === 'off') continue;
-        var name = (val === 'minor') ? spellTriad(rootIndex, 'minor').rootName : rootName;
-        var label = name + ' ' + val.charAt(0).toUpperCase() + val.slice(1);
+        var tonality = (val === 'minor' || val === 'minorscale') ? 'minor' : 'major';
+        var label = spellTriad(rootIndex, tonality).rootName + ' ' + OVERLAY_LABELS[val];
         opts[i].textContent = label;
         if (val === currentValue) {
             trigger.textContent = label;
@@ -444,12 +456,20 @@ function renderShowAll(rootIndex, quality, stringSet, selectedInversion) {
         }
     }
 
-    // Add pentatonic overlay notes
+    // Add scale/pentatonic overlay notes
     var pentatonicType = document.getElementById('pentatonic-select').dataset.value;
     var pentSpelling = null;
     if (pentatonicType !== 'off') {
-        pentSpelling = spellPentatonic(rootIndex, pentatonicType);
-        var pentNotes = getPentatonicNotes(rootIndex, pentatonicType);
+        var isScaleOverlay = (pentatonicType === 'majorscale' || pentatonicType === 'minorscale');
+        var overlayTonality = (pentatonicType === 'minorscale') ? 'minor' : 'major';
+        var pentNotes;
+        if (isScaleOverlay) {
+            pentSpelling = spellScale(rootIndex, overlayTonality);
+            pentNotes = getScaleNotes(rootIndex, overlayTonality);
+        } else {
+            pentSpelling = spellPentatonic(rootIndex, pentatonicType);
+            pentNotes = getPentatonicNotes(rootIndex, pentatonicType);
+        }
         for (var i = 0; i < stringSet.length; i++) {
             var si = stringSet[i];
             var openNote = STRING_TUNING[si];
@@ -609,22 +629,35 @@ var TRIAD_QUALITY_OPTIONS = [
     { value: 'major', label: 'Major' },
     { value: 'minor', label: 'Minor' },
     { value: 'dim',   label: 'Dim' },
-    { value: 'aug',   label: 'Aug' }
+    { value: 'aug',   label: 'Aug' },
+    { value: 'sus2',  label: 'Sus2' },
+    { value: 'sus4',  label: 'Sus4' }
 ];
 var SEVENTH_QUALITY_OPTIONS = [
     { value: 'maj7', label: 'Maj7' },
     { value: 'min7', label: 'Min7' },
     { value: 'dom7', label: 'Dom7' },
-    { value: 'm7b5', label: 'Min7♭5' }
+    { value: 'm7b5', label: 'Min7♭5' },
+    { value: 'maj6', label: 'Maj6' },
+    { value: 'min6', label: 'Min6' }
 ];
 // Sensible quality mapping when switching between triads and sevenths
-var TRIAD_TO_SEVENTH = { major: 'maj7', minor: 'min7', dim: 'm7b5', aug: 'dom7' };
-var SEVENTH_TO_TRIAD = { maj7: 'major', min7: 'minor', dom7: 'major', m7b5: 'dim' };
+var TRIAD_TO_SEVENTH = { major: 'maj7', minor: 'min7', dim: 'm7b5', aug: 'dom7', sus2: 'maj7', sus4: 'dom7' };
+var SEVENTH_TO_TRIAD = { maj7: 'major', min7: 'minor', dom7: 'major', m7b5: 'dim', maj6: 'major', min6: 'minor' };
+
+// Labels for each voicing type's string sets
+function trainingSetLabels(voicingType) {
+    if (voicingType === 'drop2') return FOUR_STRING_SET_LABELS;
+    if (voicingType === 'shell') return SHELL_STRING_SET_LABELS;
+    if (voicingType === 'open') return OPEN_STRING_SET_LABELS;
+    return STRING_SET_LABELS;
+}
 
 // Rebuild quality / strings / inversion selects when the voicing type changes.
 function updateTrainingSelectsForVoicing() {
     var voicingType = document.getElementById('train-voicing-select').dataset.value;
-    var isSeventh = (voicingType === 'drop2');
+    // Drop-2 and shells are built from 4-note chords → seventh quality list
+    var isSeventh = (voicingType === 'drop2' || voicingType === 'shell');
     var qualitySel = document.getElementById('train-quality-select');
     var currentQuality = qualitySel.dataset.value;
 
@@ -638,16 +671,15 @@ function updateTrainingSelectsForVoicing() {
     }
 
     // Strings options
-    var labels = isSeventh ? FOUR_STRING_SET_LABELS
-        : (voicingType === 'open' ? OPEN_STRING_SET_LABELS : STRING_SET_LABELS);
+    var labels = trainingSetLabels(voicingType);
     var stringOpts = [{ value: 'all', label: 'All' }];
     for (var i = 0; i < labels.length; i++) stringOpts.push({ value: String(i), label: labels[i] });
     var ssel = rebuildSelect('train-strings-select', stringOpts, 'all');
     ssel._onChange = updateTrainingVoicings;
 
-    // Inversion options (sevenths have a 3rd inversion)
+    // Inversion options (sevenths have a 3rd inversion; shells are root-only grips)
     var invOpts = [{ value: 'all', label: 'All' }];
-    var invCount = isSeventh ? 4 : 3;
+    var invCount = voicingType === 'shell' ? 1 : (isSeventh ? 4 : 3);
     for (var i = 0; i < invCount; i++) invOpts.push({ value: String(i), label: INVERSION_NAMES[i] });
     var isel = rebuildSelect('train-inversion-select', invOpts, 'all');
     isel._onChange = updateTrainingVoicings;
@@ -693,12 +725,12 @@ function updateTrainingVoicings() {
     var voicingType = document.getElementById('train-voicing-select').dataset.value;
 
     var isOpen = (voicingType === 'open');
-    var isSeventh = (voicingType === 'drop2');
-    var setLabels = isSeventh ? FOUR_STRING_SET_LABELS
-        : (isOpen ? OPEN_STRING_SET_LABELS : STRING_SET_LABELS);
+    var isSeventh = (voicingType === 'drop2' || voicingType === 'shell');
+    var setLabels = trainingSetLabels(voicingType);
 
     function voicingsFor(root, q) {
-        if (isSeventh) return getDrop2SeventhVoicingsForChord(root, q);
+        if (voicingType === 'shell') return getShellVoicingsForChord(root, q);
+        if (voicingType === 'drop2') return getDrop2SeventhVoicingsForChord(root, q);
         if (isOpen) return getOpenVoicingsForChord(root, q);
         return getAllVoicingsForChord(root, q);
     }
@@ -1836,17 +1868,21 @@ var prog = {
 
 var PROG_PRESETS = {
     major: [
-        { name: 'I – IV – V – I',    degrees: [0, 3, 4, 0] },
-        { name: 'I – V – vi – IV',   degrees: [0, 4, 5, 3] },
-        { name: 'ii – V – I',        degrees: [1, 4, 0] },
-        { name: 'I – vi – ii – V',   degrees: [0, 5, 1, 4] },
-        { name: '12-bar blues',      degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 4], blues: true }
+        { name: 'I – IV – V – I',           degrees: [0, 3, 4, 0] },
+        { name: 'I – V – vi – IV',          degrees: [0, 4, 5, 3] },
+        { name: 'vi – IV – I – V (Axis)',   degrees: [5, 3, 0, 4] },
+        { name: 'I – vi – IV – V (50s)',    degrees: [0, 5, 3, 4] },
+        { name: 'ii – V – I',               degrees: [1, 4, 0] },
+        { name: 'I – vi – ii – V',          degrees: [0, 5, 1, 4] },
+        { name: 'I – iii – IV – V',         degrees: [0, 2, 3, 4] },
+        { name: '12-bar blues',             degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 4], blues: true }
     ],
     minor: [
-        { name: 'i – VI – III – VII', degrees: [0, 5, 2, 6] },
-        { name: 'i – iv – v – i',     degrees: [0, 3, 4, 0] },
-        { name: 'i – iv – VII – III', degrees: [0, 3, 6, 2] },
-        { name: 'ii° – v – i',        degrees: [1, 4, 0] }
+        { name: 'i – VI – III – VII',  degrees: [0, 5, 2, 6] },
+        { name: 'i – iv – v – i',      degrees: [0, 3, 4, 0] },
+        { name: 'i – iv – VII – III',  degrees: [0, 3, 6, 2] },
+        { name: 'i – VII – VI – VII',  degrees: [0, 6, 5, 6] },
+        { name: 'ii° – v – i',         degrees: [1, 4, 0] }
     ]
 };
 
@@ -2526,16 +2562,707 @@ function renderNashStats() {
     wrap.innerHTML = html;
 }
 
+// ===================== Shared helpers for Course / Circle / Progress =====================
+
+// Build renderer note objects for a chord voicing (standard interval colors)
+function chordVoicingNotes(root, quality, voicing, opts) {
+    opts = opts || {};
+    var chordNotes = getChordNotes(root, quality);
+    var spelling = spellChord(root, quality);
+    var labels = CHORD_INTERVAL_LABELS[quality];
+    var notes = [];
+    for (var i = 0; i < voicing.length; i++) {
+        var pc = (STRING_TUNING[voicing[i].string] + voicing[i].fret) % 12;
+        var idx = chordNotes.indexOf(pc);
+        notes.push({
+            string: voicing[i].string,
+            fret: voicing[i].fret,
+            color: INTERVAL_COLOR_KEYS[idx],
+            label: labelMode === 'intervals' ? labels[idx] : spelling.map[pc],
+            glow: idx === 0,
+            opacity: opts.opacity !== undefined ? opts.opacity : 1.0,
+            size: opts.size || 22
+        });
+    }
+    return notes;
+}
+
+// Switch tabs programmatically (keeps tab active-classes in sync)
+function switchToMode(mode) {
+    var tab = document.querySelector('.mode-tab[data-mode="' + mode + '"]');
+    if (tab) tab.click();
+}
+
+// Generic collapsible explainer boxes (button carries data-target)
+function initExplainers() {
+    var btns = document.querySelectorAll('.explainer-btn');
+    for (var i = 0; i < btns.length; i++) {
+        (function(btn) {
+            btn.addEventListener('click', function() {
+                var box = document.getElementById(btn.dataset.target);
+                var open = box.style.display !== 'none';
+                box.style.display = open ? 'none' : '';
+                btn.textContent = open
+                    ? btn.textContent.replace('▴', '▾')
+                    : btn.textContent.replace('▾', '▴');
+            });
+        })(btns[i]);
+    }
+}
+
+// ===================== Course (Learn) Panel =====================
+
+var learnRenderer = null;
+var learn = { index: 0, timers: [] };
+var LEARN_DONE_KEY = 'triadTrainerLearnDone';
+
+function loadLearnDone() {
+    try { return JSON.parse(localStorage.getItem(LEARN_DONE_KEY)) || {}; }
+    catch (e) { return {}; }
+}
+
+function saveLearnDone(done) {
+    try { localStorage.setItem(LEARN_DONE_KEY, JSON.stringify(done)); } catch (e) {}
+}
+
+function initLearnPanel() {
+    var canvas = document.getElementById('learn-canvas');
+    var overlay = document.getElementById('learn-overlay');
+    learnRenderer = new FretboardRenderer(canvas, overlay);
+    learnRenderer.setInteractive(true, function(string, fret) {
+        playPositionSound(string, fret);
+    });
+
+    document.getElementById('learn-prev').addEventListener('click', function() {
+        showLesson(learn.index - 1);
+    });
+    document.getElementById('learn-next').addEventListener('click', function() {
+        showLesson(learn.index + 1);
+    });
+    document.getElementById('learn-complete-btn').addEventListener('click', function() {
+        var done = loadLearnDone();
+        var id = LESSONS[learn.index].id;
+        if (done[id]) delete done[id];
+        else done[id] = true;
+        saveLearnDone(done);
+        renderLearnNav();
+        updateLearnFooter();
+    });
+    document.getElementById('learn-practice-btn').addEventListener('click', function() {
+        var p = LESSONS[learn.index].practice;
+        if (!p) return;
+        switchToMode(p.mode);
+        // Apply any preset selects after the target panel has initialized
+        if (p.selects) {
+            for (var id in p.selects) {
+                var sel = document.getElementById(id);
+                if (!sel) continue;
+                setSelectValue(sel, p.selects[id]);
+                if (sel._onChange) sel._onChange();
+            }
+        }
+    });
+
+    // Open at the first incomplete lesson
+    var done = loadLearnDone();
+    var idx = 0;
+    for (var i = 0; i < LESSONS.length; i++) {
+        if (!done[LESSONS[i].id]) { idx = i; break; }
+    }
+    showLesson(idx);
+}
+
+function clearLearnTimers() {
+    for (var i = 0; i < learn.timers.length; i++) clearTimeout(learn.timers[i]);
+    learn.timers = [];
+}
+
+function renderLearnNav() {
+    var wrap = document.getElementById('learn-nav');
+    var done = loadLearnDone();
+    var html = '<div class="learn-nav-head">Lessons</div>';
+    for (var i = 0; i < LESSONS.length; i++) {
+        var isDone = !!done[LESSONS[i].id];
+        html += '<button class="learn-nav-item' + (i === learn.index ? ' active' : '') + (isDone ? ' done' : '') + '" data-idx="' + i + '">';
+        html += '<span class="learn-nav-num">' + (i + 1) + '</span>';
+        html += '<span class="learn-nav-name">' + LESSONS[i].title + '</span>';
+        html += '<span class="learn-nav-check">' + (isDone ? '✓' : '') + '</span>';
+        html += '</button>';
+    }
+    wrap.innerHTML = html;
+    var items = wrap.querySelectorAll('.learn-nav-item');
+    for (var i = 0; i < items.length; i++) {
+        (function(btn) {
+            btn.addEventListener('click', function() {
+                showLesson(parseInt(btn.dataset.idx));
+            });
+        })(items[i]);
+    }
+}
+
+function updateLearnFooter() {
+    var lesson = LESSONS[learn.index];
+    var done = loadLearnDone();
+    var practiceBtn = document.getElementById('learn-practice-btn');
+    practiceBtn.textContent = lesson.practice ? lesson.practice.label : '';
+    practiceBtn.style.display = lesson.practice ? '' : 'none';
+
+    var completeBtn = document.getElementById('learn-complete-btn');
+    var isDone = !!done[lesson.id];
+    completeBtn.textContent = isDone ? '✓ Completed — tap to undo' : 'Mark complete';
+    completeBtn.classList.toggle('done', isDone);
+
+    document.getElementById('learn-prev').disabled = (learn.index === 0);
+    document.getElementById('learn-next').disabled = (learn.index === LESSONS.length - 1);
+}
+
+function showLesson(index) {
+    if (!learnRenderer) return;
+    if (index < 0 || index >= LESSONS.length) return;
+    clearLearnTimers();
+    learn.index = index;
+    var lesson = LESSONS[index];
+
+    document.getElementById('learn-kicker').textContent = 'Lesson ' + (index + 1) + ' of ' + LESSONS.length;
+    document.getElementById('learn-title').textContent = lesson.title;
+    document.getElementById('learn-subtitle').textContent = lesson.subtitle;
+    document.getElementById('learn-content').innerHTML = lesson.sections.join('');
+
+    var demosWrap = document.getElementById('learn-demos');
+    demosWrap.innerHTML = '';
+    for (var i = 0; i < lesson.demos.length; i++) {
+        (function(demo) {
+            var btn = document.createElement('button');
+            btn.className = 'learn-demo-btn';
+            btn.textContent = '▸ ' + demo.label;
+            btn.addEventListener('click', function() { runLearnDemo(demo, btn); });
+            demosWrap.appendChild(btn);
+        })(lesson.demos[i]);
+    }
+
+    renderLearnNav();
+    updateLearnFooter();
+
+    // Auto-show the first demo without audio so the board is never blank
+    if (lesson.demos.length > 0) {
+        runLearnDemo(lesson.demos[0], demosWrap.firstChild, { silent: true });
+    } else {
+        learnRenderer.setVoicingGroups([]);
+        learnRenderer.setNotes([]);
+    }
+}
+
+// Pick a concrete voicing for a lesson demo chord
+function findLearnVoicing(board) {
+    var pool;
+    if (board.voicing === 'open') pool = getOpenVoicingsForChord(board.root, board.quality);
+    else if (board.voicing === 'drop2') pool = getDrop2SeventhVoicingsForChord(board.root, board.quality);
+    else if (board.voicing === 'shell') pool = getShellVoicingsForChord(board.root, board.quality);
+    else pool = getAllVoicingsForChord(board.root, board.quality);
+
+    for (var i = 0; i < pool.length; i++) {
+        if (board.set !== undefined && pool[i].stringSetIndex !== board.set) continue;
+        if (board.inversion !== undefined && pool[i].inversion !== board.inversion) continue;
+        return pool[i];
+    }
+    return pool[0] || null;
+}
+
+function learnPlaySequence(midis, gap) {
+    var ctx = ensureAudioContext();
+    for (var i = 0; i < midis.length; i++) {
+        playNoteSound(midis[i], ctx.currentTime + 0.05 + i * gap);
+    }
+}
+
+function runLearnDemo(demo, btn, opts) {
+    opts = opts || {};
+    clearLearnTimers();
+    var silent = !!opts.silent;
+
+    var btns = document.querySelectorAll('#learn-demos .learn-demo-btn');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle('active', btns[i] === btn);
+    }
+
+    var caption = document.getElementById('learn-caption');
+    caption.innerHTML = '&nbsp;';
+
+    var b = demo.board || {};
+
+    if (b.type === 'progression') {
+        runLearnProgression(demo, silent);
+        return;
+    }
+
+    var notes = [];
+    var groups = [];
+    var active = [0, 1, 2, 3, 4, 5];
+    var playMidis = null;
+    var playGap = 0.3;
+    var strumVoicing = null;
+
+    if (b.type === 'pc') {
+        var positions = [];
+        for (var si = 0; si < 6; si++) {
+            for (var f = 0; f <= 15; f++) {
+                if ((STRING_TUNING[si] + f) % 12 !== b.pc) continue;
+                var midi = STRING_TUNING[si] + f;
+                var octave = Math.floor(midi / 12) - 1;
+                positions.push({ string: si, fret: f, midi: midi });
+                notes.push({
+                    string: si, fret: f, color: 'root',
+                    label: pcDisplayName(b.pc) + octave,
+                    glow: false, opacity: 1.0, size: 22
+                });
+            }
+        }
+        if (b.octaves) {
+            for (var i = 0; i < positions.length; i++) {
+                var p = positions[i];
+                if (p.string + 2 > 5) continue;
+                var diff = STRING_TUNING[p.string + 2] - STRING_TUNING[p.string];
+                var f2 = p.fret + 12 - diff;
+                if (f2 >= 0 && f2 <= 15) {
+                    groups.push([{ string: p.string, fret: p.fret }, { string: p.string + 2, fret: f2 }]);
+                }
+            }
+        }
+        positions.sort(function(x, y) { return x.midi - y.midi; });
+        playMidis = positions.map(function(p) { return p.midi; });
+        playGap = 0.22;
+        caption.textContent = 'Every ' + pcDisplayName(b.pc) + ' in the first 15 frets';
+    } else if (b.type === 'chromatic') {
+        var s = b.string;
+        active = [s];
+        var seqMidis = [];
+        for (var f = 0; f <= 12; f++) {
+            var pc = (STRING_TUNING[s] + f) % 12;
+            var natural = NATURAL_PCS.indexOf(pc) !== -1;
+            if (b.naturalsOnly && !natural) continue;
+            seqMidis.push(STRING_TUNING[s] + f);
+            notes.push({
+                string: s, fret: f,
+                color: natural ? 'root' : 'fifth',
+                label: pcDisplayName(pc),
+                glow: false,
+                opacity: natural ? 1.0 : 0.6,
+                size: 22
+            });
+        }
+        playMidis = seqMidis;
+        playGap = 0.25;
+        caption.textContent = b.naturalsOnly
+            ? 'Naturals only — the one-fret seams are E–F and B–C'
+            : 'All twelve notes, one fret at a time';
+    } else if (b.type === 'interval') {
+        var it = intervalTypeBySemi(b.semi);
+        var rootPos = { string: b.root[0], fret: b.root[1] };
+        var tPos = { string: b.target[0], fret: b.target[1] };
+        notes = [
+            { string: rootPos.string, fret: rootPos.fret, color: 'root', label: 'R', glow: true, opacity: 1.0, size: 22 },
+            { string: tPos.string, fret: tPos.fret, color: 'quiz', label: it.short, glow: false, opacity: 1.0, size: 22 }
+        ];
+        groups = [[rootPos, tPos]];
+        playMidis = [STRING_TUNING[rootPos.string] + rootPos.fret, STRING_TUNING[tPos.string] + tPos.fret];
+        playGap = 0.6;
+        caption.textContent = it.name + ' — ' + b.semi + ' half step' + (b.semi > 1 ? 's' : '');
+    } else if (b.type === 'chord') {
+        var v = findLearnVoicing(b);
+        if (v) {
+            notes = chordVoicingNotes(b.root, b.quality, v.voicing);
+            groups = [v.voicing];
+            caption.textContent = chordDisplayLabel(b.root, b.quality) + ' — ' + INVERSION_NAMES[v.inversion];
+            if (demo.play === 'seq') {
+                playMidis = v.voicing.map(function(p) { return STRING_TUNING[p.string] + p.fret; });
+                playMidis.sort(function(x, y) { return x - y; });
+                playGap = 0.55;
+            } else if (demo.play === 'strum') {
+                strumVoicing = v.voicing;
+            }
+        }
+    } else if (b.type === 'scale') {
+        var spelling = spellScale(b.root, b.scale);
+        var scalePcs = getScaleNotes(b.root, b.scale);
+        for (var si = 0; si < 6; si++) {
+            for (var f = 0; f <= 12; f++) {
+                var pc = (STRING_TUNING[si] + f) % 12;
+                if (scalePcs.indexOf(pc) === -1) continue;
+                var isRoot = (pc === b.root);
+                notes.push({
+                    string: si, fret: f,
+                    color: isRoot ? 'root' : 'pent',
+                    label: spelling.map[pc],
+                    glow: isRoot,
+                    opacity: isRoot ? 1.0 : 0.7,
+                    size: 22
+                });
+            }
+        }
+        caption.textContent = spelling.names.join(' – ');
+        if (demo.play === 'seqscale' || demo.play === 'seq') {
+            // One octave ascending from a low-ish root
+            var rootMidi = null;
+            for (var m = 45; m < 60 && rootMidi === null; m++) {
+                if (m % 12 === b.root) rootMidi = m;
+            }
+            playMidis = scalePcs.map(function(pc, i) { return rootMidi + SCALE_INTERVALS[b.scale][i]; });
+            playMidis.push(rootMidi + 12);
+            playGap = 0.32;
+        }
+    }
+
+    learnRenderer.setActiveStrings(active);
+    learnRenderer.setVoicingGroups(groups);
+    learnRenderer.setNotes(notes);
+
+    if (!silent) {
+        if (strumVoicing) {
+            scheduleChordTones(strumVoicing, ensureAudioContext().currentTime + 0.05);
+        } else if (playMidis && demo.play !== 'none') {
+            learnPlaySequence(playMidis, playGap);
+        }
+    }
+}
+
+// Animated chord-by-chord walkthrough of a progression
+function runLearnProgression(demo, silent) {
+    var b = demo.board;
+    var diatonic = b.sevenths ? getScaleSevenths(b.key, b.scale) : getScaleTriads(b.key, b.scale);
+    var chords = b.degrees.map(function(d) {
+        var c = diatonic[d];
+        return { root: c.root, quality: c.quality, label: c.label, numeral: c.numeral, degree: d };
+    });
+    voiceLeadChords(chords, !!b.sevenths);
+
+    var caption = document.getElementById('learn-caption');
+    learnRenderer.setActiveStrings([0, 1, 2, 3, 4, 5]);
+
+    var stepMs = 1100;
+    var ctx = silent ? null : ensureAudioContext();
+    for (var i = 0; i < chords.length; i++) {
+        (function(c, i) {
+            var t = setTimeout(function() {
+                learnRenderer.setVoicingGroups([c.voicing]);
+                learnRenderer.setNotes(chordVoicingNotes(c.root, c.quality, c.voicing));
+                caption.textContent = c.label + ' — ' + c.numeral;
+            }, i * stepMs);
+            learn.timers.push(t);
+            if (!silent) {
+                scheduleChordTones(c.voicing, ctx.currentTime + 0.05 + i * (stepMs / 1000));
+            }
+        })(chords[i], i);
+    }
+}
+
+// ===================== Circle of Fifths Panel =====================
+
+var circleInited = false;
+var circleSelectedPc = 0;
+
+function initCirclePanel() {
+    circleInited = true;
+    buildCircleWheel();
+    selectCircleKey(circleSelectedPc);
+}
+
+function circleWheelLabel(entry) {
+    // The enharmonic seam gets its short name on the wheel; detail shows both
+    return entry.sig === 6 ? 'F♯' : entry.major;
+}
+
+function buildCircleWheel() {
+    var wrap = document.getElementById('circle-wheel');
+    var size = 440, cx = size / 2, cy = size / 2;
+    var svg = '<svg viewBox="0 0 ' + size + ' ' + size + '" xmlns="http://www.w3.org/2000/svg">';
+    for (var i = 0; i < CIRCLE_OF_FIFTHS.length; i++) {
+        var entry = CIRCLE_OF_FIFTHS[i];
+        var angle = (i / 12) * Math.PI * 2 - Math.PI / 2;
+        var mx = cx + Math.cos(angle) * 178;
+        var my = cy + Math.sin(angle) * 178;
+        var nx = cx + Math.cos(angle) * 115;
+        var ny = cy + Math.sin(angle) * 115;
+        svg += '<g class="ck ck-major" data-pc="' + entry.pc + '">' +
+            '<circle cx="' + mx + '" cy="' + my + '" r="27"/>' +
+            '<text x="' + mx + '" y="' + my + '" dy="0.35em">' + circleWheelLabel(entry) + '</text></g>';
+        svg += '<g class="ck ck-minor" data-pc="' + entry.pc + '">' +
+            '<circle cx="' + nx + '" cy="' + ny + '" r="20"/>' +
+            '<text x="' + nx + '" y="' + ny + '" dy="0.35em">' + relativeMinorName(entry.pc) + 'm</text></g>';
+    }
+    svg += '</svg>';
+    wrap.innerHTML = svg;
+
+    var keys = wrap.querySelectorAll('.ck');
+    for (var i = 0; i < keys.length; i++) {
+        (function(g) {
+            g.addEventListener('click', function() {
+                selectCircleKey(parseInt(g.dataset.pc));
+            });
+        })(keys[i]);
+    }
+}
+
+function selectCircleKey(pc) {
+    circleSelectedPc = pc;
+    var entry = null;
+    for (var i = 0; i < CIRCLE_OF_FIFTHS.length; i++) {
+        if (CIRCLE_OF_FIFTHS[i].pc === pc) entry = CIRCLE_OF_FIFTHS[i];
+    }
+    if (!entry) return;
+
+    var keys = document.querySelectorAll('#circle-wheel .ck');
+    for (var i = 0; i < keys.length; i++) {
+        keys[i].classList.toggle('active', parseInt(keys[i].dataset.pc) === pc);
+    }
+
+    var majorScale = spellScale(pc, 'major');
+    var triads = getScaleTriads(pc, 'major');
+    var sevenths = getScaleSevenths(pc, 'major');
+    var relMinor = relativeMinorName(pc);
+
+    var html = '<div class="circle-key-name">' + entry.major + ' major</div>';
+    html += '<div class="circle-key-sig">' + keySignatureLabel(entry.sig) + '</div>';
+
+    html += '<div class="circle-detail-row"><span class="circle-detail-label">Scale</span><div class="circle-chips">';
+    for (var d = 0; d < 7; d++) {
+        html += '<span class="circle-chip circle-chip-static" title="' + degreeFunctionName(d, 'major') + '">' +
+            '<span class="chip-sub">' + (d + 1) + '</span>' + majorScale.names[d] + '</span>';
+    }
+    html += '</div></div>';
+
+    html += '<div class="circle-detail-row"><span class="circle-detail-label">Triads</span><div class="circle-chips">';
+    for (var d = 0; d < 7; d++) {
+        html += '<button class="circle-chip" data-root="' + triads[d].root + '" data-quality="' + triads[d].quality + '" title="' + degreeFunctionName(d, 'major') + '">' +
+            '<span class="chip-sub">' + triads[d].numeral + '</span>' + triads[d].label + '</button>';
+    }
+    html += '</div></div>';
+
+    html += '<div class="circle-detail-row"><span class="circle-detail-label">Sevenths</span><div class="circle-chips">';
+    for (var d = 0; d < 7; d++) {
+        html += '<button class="circle-chip" data-root="' + sevenths[d].root + '" data-quality="' + sevenths[d].quality + '" data-seventh="1">' +
+            '<span class="chip-sub">' + sevenths[d].numeral + '</span>' + sevenths[d].label + '</button>';
+    }
+    html += '</div></div>';
+
+    html += '<div class="circle-detail-row"><span class="circle-detail-label">Relative minor</span>' +
+        '<div class="circle-relmin">' + relMinor + ' minor — the same seven notes centered on ' + relMinor + '</div></div>';
+
+    html += '<div class="circle-actions">' +
+        '<button class="transport-btn" id="circle-practice-prog">Progressions in ' + entry.major + '</button>' +
+        '<button class="transport-btn" id="circle-practice-train">Scale run in ' + entry.major + '</button></div>';
+    html += '<div class="fb-hint circle-hint">Click any chord to hear it</div>';
+
+    document.getElementById('circle-detail').innerHTML = html;
+
+    var chips = document.querySelectorAll('#circle-detail .circle-chip[data-root]');
+    for (var i = 0; i < chips.length; i++) {
+        (function(chip) {
+            chip.addEventListener('click', function() {
+                var info = bestMidVoicing(parseInt(chip.dataset.root), chip.dataset.quality, chip.dataset.seventh === '1');
+                scheduleChordTones(info.voicing, ensureAudioContext().currentTime + 0.02);
+            });
+        })(chips[i]);
+    }
+
+    document.getElementById('circle-practice-prog').addEventListener('click', function() {
+        switchToMode('progressions');
+        setSelectValue(document.getElementById('prog-key-select'), pc);
+        setSelectValue(document.getElementById('prog-scale-select'), 'major');
+        buildProgression();
+    });
+    document.getElementById('circle-practice-train').addEventListener('click', function() {
+        switchToMode('training');
+        setSelectValue(document.getElementById('train-root-select'), pc);
+        setSelectValue(document.getElementById('train-mode-select'), 'scale');
+        updateTrainingVoicings();
+    });
+}
+
+// ===================== Progress Panel =====================
+
+var progressRenderer = null;
+
+function initProgressPanel() {
+    var canvas = document.getElementById('progress-canvas');
+    var overlay = document.getElementById('progress-overlay');
+    progressRenderer = new FretboardRenderer(canvas, overlay);
+    progressRenderer.setInteractive(true, function(string, fret) {
+        playPositionSound(string, fret);
+    });
+    renderProgressDashboard();
+}
+
+function accClass(pct) {
+    return pct >= 85 ? 'acc-good' : (pct >= 60 ? 'acc-mid' : 'acc-bad');
+}
+
+function statsTotals(stats) {
+    var r = 0, w = 0;
+    for (var key in stats) { r += stats[key].r; w += stats[key].w; }
+    var total = r + w;
+    return { total: total, acc: total > 0 ? Math.round(r / total * 100) : null };
+}
+
+function weakestItems(stats, labelFn, count) {
+    var items = [];
+    for (var key in stats) {
+        var st = stats[key];
+        var total = st.r + st.w;
+        if (total < 3) continue;
+        items.push({ key: key, total: total, acc: st.r / total });
+    }
+    items.sort(function(a, b) { return a.acc - b.acc; });
+    return items.slice(0, count).map(function(it) {
+        return { label: labelFn(it.key), acc: Math.round(it.acc * 100), total: it.total };
+    });
+}
+
+function quizStatLabel(key) {
+    var parts = key.split('|');
+    return pcDisplayName(parseInt(parts[0])) + ' on the ' + STRING_PROMPT_LABELS[parseInt(parts[1])] + ' string';
+}
+
+function ivStatLabel(key) {
+    var parts = key.split('|');
+    if (parts[0] === 'c') {
+        var pretty = { major: 'Major', minor: 'Minor', dim: 'Dim', aug: 'Aug',
+                       maj7: 'Maj7', min7: 'Min7', dom7: 'Dom7', m7b5: 'Min7♭5' };
+        return pretty[parts[1]] + ' chords by ear';
+    }
+    return intervalTypeBySemi(parseInt(parts[1])).name;
+}
+
+function nashStatLabel(key) {
+    var parts = key.split('|');
+    if (parts[0] === 'p') {
+        return nashPatternLabel(NASH_EAR_PATTERNS[parseInt(parts[1])].degrees, 'major');
+    }
+    var scale = parts[1];
+    var d = parseInt(parts[2]);
+    var diatonic = getScaleTriads(0, scale);
+    return getNashvilleNumber(d, scale, diatonic[d].quality) + ' in ' + scale + ' keys';
+}
+
+function renderProgressDashboard() {
+    if (!progressRenderer) return;
+
+    // Course progress bar
+    var done = loadLearnDone();
+    var doneCount = 0;
+    for (var i = 0; i < LESSONS.length; i++) {
+        if (done[LESSONS[i].id]) doneCount++;
+    }
+    var pct = Math.round(doneCount / LESSONS.length * 100);
+    var courseHtml = '<div class="progress-course-head">' +
+        '<span class="quiz-stats-title">Course progress</span>' +
+        '<span class="progress-course-count">' + doneCount + ' / ' + LESSONS.length + ' lessons</span></div>' +
+        '<div class="progress-course-bar"><div class="progress-course-fill" style="width:' + pct + '%"></div></div>';
+    var next = null;
+    for (var i = 0; i < LESSONS.length; i++) {
+        if (!done[LESSONS[i].id]) { next = LESSONS[i]; break; }
+    }
+    if (next) {
+        courseHtml += '<button class="transport-btn progress-resume-btn" id="progress-resume">' +
+            (doneCount === 0 ? 'Start the course' : 'Continue: ' + next.title) + '</button>';
+    }
+    document.getElementById('progress-course').innerHTML = courseHtml;
+    var resumeBtn = document.getElementById('progress-resume');
+    if (resumeBtn) {
+        resumeBtn.addEventListener('click', function() { switchToMode('learn'); });
+    }
+
+    // Drill cards
+    var cards = [
+        { title: 'Note Quiz', mode: 'quiz', stats: loadQuizStats(), labelFn: quizStatLabel },
+        { title: 'Intervals', mode: 'intervals', stats: loadIvStats(), labelFn: ivStatLabel },
+        { title: 'Nashville', mode: 'nashville', stats: loadNashStats(), labelFn: nashStatLabel }
+    ];
+    var html = '';
+    for (var c = 0; c < cards.length; c++) {
+        var totals = statsTotals(cards[c].stats);
+        html += '<div class="progress-card">';
+        html += '<div class="progress-card-title">' + cards[c].title + '</div>';
+        if (totals.total === 0) {
+            html += '<div class="progress-card-empty">No answers yet — the drill is waiting</div>';
+        } else {
+            html += '<div class="progress-card-stats">' +
+                '<span class="progress-card-acc ' + accClass(totals.acc) + '">' + totals.acc + '%</span>' +
+                '<span class="progress-card-total">' + totals.total + (totals.total === 1 ? ' answer' : ' answers') + '</span></div>';
+            var weak = weakestItems(cards[c].stats, cards[c].labelFn, 3);
+            if (weak.length > 0) {
+                html += '<div class="progress-weak-title">Weakest right now</div>';
+                for (var w = 0; w < weak.length; w++) {
+                    html += '<div class="progress-weak-row"><span class="progress-weak-label">' + weak[w].label + '</span>' +
+                        '<span class="' + accClass(weak[w].acc) + '">' + weak[w].acc + '%</span></div>';
+                }
+            }
+        }
+        html += '<button class="quiz-reset-btn progress-drill-btn" data-mode="' + cards[c].mode + '">Drill ' + cards[c].title + ' →</button>';
+        html += '</div>';
+    }
+    document.getElementById('progress-cards').innerHTML = html;
+
+    var drillBtns = document.querySelectorAll('.progress-drill-btn');
+    for (var i = 0; i < drillBtns.length; i++) {
+        (function(btn) {
+            btn.addEventListener('click', function() { switchToMode(btn.dataset.mode); });
+        })(drillBtns[i]);
+    }
+
+    renderProgressHeatmap();
+}
+
+function lerpColor(c1, c2, t) {
+    return [c1[0] + (c2[0] - c1[0]) * t, c1[1] + (c2[1] - c1[1]) * t, c1[2] + (c2[2] - c1[2]) * t];
+}
+
+function heatColor(acc) {
+    var red = [0.86, 0.28, 0.28], amber = [0.85, 0.63, 0.19], green = [0.30, 0.78, 0.42];
+    return acc < 0.5 ? lerpColor(red, amber, acc * 2) : lerpColor(amber, green, (acc - 0.5) * 2);
+}
+
+function renderProgressHeatmap() {
+    var stats = loadQuizStats();
+    progressRenderer.setActiveStrings([0, 1, 2, 3, 4, 5]);
+    progressRenderer.setVoicingGroups([]);
+
+    var notes = [];
+    for (var s = 0; s < 6; s++) {
+        for (var f = 0; f <= 12; f++) {
+            var pc = (STRING_TUNING[s] + f) % 12;
+            var st = stats[pc + '|' + s];
+            var total = st ? st.r + st.w : 0;
+            if (total === 0) {
+                notes.push({ string: s, fret: f, color: 'dim', label: '', glow: false, opacity: 0.18, size: 11 });
+            } else {
+                var acc = st.r / total;
+                notes.push({
+                    string: s, fret: f,
+                    color: heatColor(acc),
+                    label: pcDisplayName(pc),
+                    glow: false,
+                    opacity: 0.55 + 0.45 * Math.min(total / 10, 1),
+                    size: 20
+                });
+            }
+        }
+    }
+    progressRenderer.setNotes(notes);
+}
+
 // ===================== Mode Switcher =====================
 
 var PANELS = {
+    learn:        { el: 'learn-panel' },
+    circle:       { el: 'circle-panel' },
     training:     { el: 'training-panel' },
     reference:    { el: 'reference-panel' },
     notemap:      { el: 'notemap-panel' },
     quiz:         { el: 'quiz-panel' },
     intervals:    { el: 'intervals-panel' },
     progressions: { el: 'progressions-panel' },
-    nashville:    { el: 'nash-panel' }
+    nashville:    { el: 'nash-panel' },
+    progress:     { el: 'progress-panel' }
 };
 
 function activateMode(mode) {
@@ -2550,9 +3277,28 @@ function activateMode(mode) {
     if (mode !== 'progressions' && prog.playing) stopProgression();
     if (mode !== 'intervals' && iv.nextTimeout) { clearTimeout(iv.nextTimeout); iv.nextTimeout = null; }
     if (mode !== 'nashville' && nash.nextTimeout) { clearTimeout(nash.nextTimeout); nash.nextTimeout = null; }
+    if (mode !== 'learn') clearLearnTimers();
 
     // Lazy-init panels so hidden canvases are never sized at zero width
-    if (mode === 'training') {
+    if (mode === 'learn') {
+        if (!learnRenderer) {
+            initLearnPanel();
+        } else {
+            learnRenderer.resize();
+            showLesson(learn.index);
+        }
+    } else if (mode === 'circle') {
+        if (!circleInited) {
+            initCirclePanel();
+        }
+    } else if (mode === 'progress') {
+        if (!progressRenderer) {
+            initProgressPanel();
+        } else {
+            progressRenderer.resize();
+            renderProgressDashboard();
+        }
+    } else if (mode === 'training') {
         if (!trainRenderer) {
             initTrainingPanel();
             updateTrainingVoicings();
@@ -2635,6 +3381,8 @@ window.addEventListener('resize', function() {
         if (ivRenderer) { ivRenderer.resize(); }
         if (progRenderer) { progRenderer.resize(); }
         if (nashRenderer) { nashRenderer.resize(); }
+        if (learnRenderer) { learnRenderer.resize(); }
+        if (progressRenderer) { progressRenderer.resize(); }
         if (currentMode === 'reference') updateReference();
         if (currentMode === 'notemap') updateNoteMap();
         if (currentMode === 'progressions') showProgChord(prog.index);
@@ -2647,7 +3395,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initCustomSelects();
     initGlobalSettings();
     initModeSwitcher();
-    // Training is the default tab — init it on load; other panels init lazily
-    initTrainingPanel();
-    updateTrainingVoicings();
+    initExplainers();
+    // Course is the landing tab — init it on load; other panels init lazily
+    initLearnPanel();
 });

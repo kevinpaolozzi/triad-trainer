@@ -30,14 +30,21 @@ var TRIAD_INTERVALS = {
     major: [0, 4, 7],
     minor: [0, 3, 7],
     dim:   [0, 3, 6],
-    aug:   [0, 4, 8]
+    aug:   [0, 4, 8],
+    sus2:  [0, 2, 7],
+    sus4:  [0, 5, 7]
 };
 
+// Four-note chords. maj6/min6 are 6th chords, not sevenths, but they live here
+// because this table drives all "4-note chord" logic (drop-2 shapes, inversion
+// counts, quality-select grouping).
 var SEVENTH_INTERVALS = {
     maj7: [0, 4, 7, 11],
     min7: [0, 3, 7, 10],
     dom7: [0, 4, 7, 10],
-    m7b5: [0, 3, 6, 10]
+    m7b5: [0, 3, 6, 10],
+    maj6: [0, 4, 7, 9],
+    min6: [0, 3, 7, 9]
 };
 
 // Unified lookup: any chord quality → intervals
@@ -51,7 +58,9 @@ var TRIAD_INTERVAL_LABELS = {
     major: ['R', '3', '5'],
     minor: ['R', '♭3', '5'],
     dim:   ['R', '♭3', '♭5'],
-    aug:   ['R', '3', '♯5']
+    aug:   ['R', '3', '♯5'],
+    sus2:  ['R', '2', '5'],
+    sus4:  ['R', '4', '5']
 };
 
 var CHORD_INTERVAL_LABELS = {
@@ -59,15 +68,31 @@ var CHORD_INTERVAL_LABELS = {
     minor: TRIAD_INTERVAL_LABELS.minor,
     dim:   TRIAD_INTERVAL_LABELS.dim,
     aug:   TRIAD_INTERVAL_LABELS.aug,
+    sus2:  TRIAD_INTERVAL_LABELS.sus2,
+    sus4:  TRIAD_INTERVAL_LABELS.sus4,
     maj7:  ['R', '3', '5', '7'],
     min7:  ['R', '♭3', '5', '♭7'],
     dom7:  ['R', '3', '5', '♭7'],
-    m7b5:  ['R', '♭3', '♭5', '♭7']
+    m7b5:  ['R', '♭3', '♭5', '♭7'],
+    maj6:  ['R', '3', '5', '6'],
+    min6:  ['R', '♭3', '5', '6']
 };
 
 var CHORD_SUFFIX = {
     major: '', minor: 'm', dim: '°', aug: '+',
-    maj7: 'maj7', min7: 'm7', dom7: '7', m7b5: 'm7♭5'
+    sus2: 'sus2', sus4: 'sus4',
+    maj7: 'maj7', min7: 'm7', dom7: '7', m7b5: 'm7♭5',
+    maj6: '6', min6: 'm6'
+};
+
+// Letter steps from the root letter for each chord degree. Default is stacked
+// thirds ([0,2,4] / [0,2,4,6]); anything built differently needs an override
+// so the spelling engine walks the right letters (Csus2 = C D G, not C E♭♭ G).
+var CHORD_STEPS = {
+    sus2: [0, 1, 4],
+    sus4: [0, 3, 4],
+    maj6: [0, 2, 4, 5],
+    min6: [0, 2, 4, 5]
 };
 
 var INVERSION_NAMES = ['Root position', '1st inversion', '2nd inversion', '3rd inversion'];
@@ -103,6 +128,9 @@ function intervalTypeBySemi(semi) {
 
 var LETTERS = ['C','D','E','F','G','A','B'];
 var LETTER_PCS = [0, 2, 4, 5, 7, 9, 11];
+// Line-of-fifths position of each natural letter (F=-1, C=0, G=1, ...);
+// each sharp adds +7, each flat -7. Distance from 0 ≈ how exotic the key is.
+var LETTER_LOF = [0, 2, 4, -1, 1, 3, 5];
 
 // 'auto' picks the spelling with fewest accidentals; 'sharp'/'flat' force
 // the root spelling (still falling back if it would create double accidentals).
@@ -165,13 +193,20 @@ function spellIntervals(rootPc, intervals, steps) {
     var spelled = [];
     for (var i = 0; i < candidates.length; i++) {
         var seq = spellSequenceFrom(rootPc, candidates[i].letterIndex, intervals, steps);
-        if (seq) spelled.push({ offset: candidates[i].offset, seq: seq });
+        if (seq) spelled.push({
+            offset: candidates[i].offset,
+            lof: LETTER_LOF[candidates[i].letterIndex] + 7 * candidates[i].offset,
+            seq: seq
+        });
     }
     if (spelled.length === 0) return null;
 
-    // Sort by total accidental cost (ties: prefer sharps, matching guitar convention)
+    // Sort by total accidental cost; break ties by preferring the root whose
+    // major key is closer to the center of the line of fifths (E♭sus4, not
+    // D♯sus4 — E♭ is a real key), then by sharps (guitar convention: F♯ > G♭).
     spelled.sort(function(a, b) {
         if (a.seq.cost !== b.seq.cost) return a.seq.cost - b.seq.cost;
+        if (Math.abs(a.lof) !== Math.abs(b.lof)) return Math.abs(a.lof) - Math.abs(b.lof);
         return b.offset - a.offset;
     });
 
@@ -197,7 +232,7 @@ function defaultSteps(count) {
 // Spell any chord (triad or seventh). Returns { names, rootName, map: {pc: name} }.
 function spellChord(rootPc, quality) {
     var intervals = CHORD_INTERVALS[quality];
-    var steps = intervals.length === 4 ? [0, 2, 4, 6] : [0, 2, 4];
+    var steps = CHORD_STEPS[quality] || (intervals.length === 4 ? [0, 2, 4, 6] : [0, 2, 4]);
     var seq = spellIntervals(rootPc, intervals, steps);
     var names = seq.notes.map(function(n) { return n.name; });
     var map = {};
@@ -455,6 +490,37 @@ function getDrop2SeventhVoicingsForChord(rootIndex, quality) {
     return results;
 }
 
+// Shell voicings: root + 3rd + 7th (the 5th is omitted — it adds nothing to
+// the quality). The two classic jazz grips: root on the 6th string with 7th
+// and 3rd on strings 4-3, or root on the 5th string with 7th and 3rd on 3-2.
+// Root position by definition — shells are named grips, not an inversion set.
+var SHELL_STRING_SETS = [[0, 2, 3], [1, 3, 4]];
+var SHELL_STRING_SET_LABELS = ['6-4-3', '5-3-2'];
+
+function getShellVoicingsForChord(rootIndex, quality) {
+    var intervals = CHORD_INTERVALS[quality];
+    if (!intervals || intervals.length < 4) return [];
+    // Voices low to high: R, 7th, 3rd
+    var pcs = [
+        rootIndex % 12,
+        (rootIndex + intervals[3]) % 12,
+        (rootIndex + intervals[1]) % 12
+    ];
+    var results = [];
+    for (var si = 0; si < SHELL_STRING_SETS.length; si++) {
+        var voicing = findBestVoicing(pcs, SHELL_STRING_SETS[si], { requireAscending: true, maxSpan: 4 });
+        if (voicing) {
+            results.push({
+                voicing: voicing,
+                inversion: 0,
+                stringSetIndex: si,
+                stringSet: SHELL_STRING_SETS[si]
+            });
+        }
+    }
+    return results;
+}
+
 // ===================== Scales =====================
 
 var SCALE_INTERVALS = {
@@ -540,6 +606,50 @@ function getScaleTriads(rootIndex, scaleQuality) {
     }
 
     return triads;
+}
+
+// ===================== Circle of Fifths =====================
+
+// Clockwise from C. sig: positive = sharps, negative = flats. F♯/G♭ is the
+// enharmonic seam (6 sharps = 6 flats). Major key names are fixed spellings
+// (concert-key convention), not subject to the spelling pref.
+var CIRCLE_OF_FIFTHS = [
+    { pc: 0,  major: 'C',        sig: 0 },
+    { pc: 7,  major: 'G',        sig: 1 },
+    { pc: 2,  major: 'D',        sig: 2 },
+    { pc: 9,  major: 'A',        sig: 3 },
+    { pc: 4,  major: 'E',        sig: 4 },
+    { pc: 11, major: 'B',        sig: 5 },
+    { pc: 6,  major: 'F♯ / G♭',  sig: 6 },
+    { pc: 1,  major: 'D♭',       sig: -5 },
+    { pc: 8,  major: 'A♭',       sig: -4 },
+    { pc: 3,  major: 'E♭',       sig: -3 },
+    { pc: 10, major: 'B♭',       sig: -2 },
+    { pc: 5,  major: 'F',        sig: -1 }
+];
+
+// Accidentals appear in a fixed order as keys add them
+var SHARP_ORDER = ['F♯', 'C♯', 'G♯', 'D♯', 'A♯', 'E♯', 'B♯'];
+var FLAT_ORDER  = ['B♭', 'E♭', 'A♭', 'D♭', 'G♭', 'C♭', 'F♭'];
+
+function keySignatureLabel(sig) {
+    if (sig === 0) return 'no sharps or flats';
+    var n = Math.abs(sig);
+    var list = (sig > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, n).join(' ');
+    return n + (sig > 0 ? ' sharp' : ' flat') + (n > 1 ? 's' : '') + ': ' + list;
+}
+
+// Relative minor of a major key, spelled from that key's own scale (degree 6)
+function relativeMinorName(majorPc) {
+    return spellScale(majorPc, 'major').names[5];
+}
+
+// Classical degree-function names. The 7th differs by scale: a half step
+// below the tonic it's the leading tone; a whole step below, the subtonic.
+function degreeFunctionName(degree, scaleType) {
+    var names = ['Tonic', 'Supertonic', 'Mediant', 'Subdominant', 'Dominant', 'Submediant', 'Leading tone'];
+    if (degree === 6 && SCALE_INTERVALS[scaleType][6] === 10) return 'Subtonic';
+    return names[degree];
 }
 
 // Nashville numbers: chords as scale-degree numbers, always relative to the

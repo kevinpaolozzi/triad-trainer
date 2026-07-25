@@ -16,13 +16,36 @@
 
     <main>
         <div class="mode-switcher">
-            <button class="mode-tab active" data-mode="training">Training</button>
-            <button class="mode-tab" data-mode="reference">Reference</button>
-            <button class="mode-tab" data-mode="notemap">Note Map</button>
-            <button class="mode-tab" data-mode="quiz">Note Quiz</button>
-            <button class="mode-tab" data-mode="intervals">Intervals</button>
-            <button class="mode-tab" data-mode="progressions">Progressions</button>
-            <button class="mode-tab" data-mode="nashville">Nashville</button>
+            <div class="nav-group">
+                <span class="nav-group-label">Learn</span>
+                <div class="nav-group-tabs">
+                    <button class="mode-tab active" data-mode="learn">Course</button>
+                    <button class="mode-tab" data-mode="circle">Circle of 5ths</button>
+                </div>
+            </div>
+            <div class="nav-group">
+                <span class="nav-group-label">Explore</span>
+                <div class="nav-group-tabs">
+                    <button class="mode-tab" data-mode="reference">Reference</button>
+                    <button class="mode-tab" data-mode="notemap">Note Map</button>
+                </div>
+            </div>
+            <div class="nav-group">
+                <span class="nav-group-label">Drill</span>
+                <div class="nav-group-tabs">
+                    <button class="mode-tab" data-mode="training">Training</button>
+                    <button class="mode-tab" data-mode="quiz">Note Quiz</button>
+                    <button class="mode-tab" data-mode="intervals">Intervals</button>
+                    <button class="mode-tab" data-mode="progressions">Progressions</button>
+                    <button class="mode-tab" data-mode="nashville">Nashville</button>
+                </div>
+            </div>
+            <div class="nav-group">
+                <span class="nav-group-label">Track</span>
+                <div class="nav-group-tabs">
+                    <button class="mode-tab" data-mode="progress">Progress</button>
+                </div>
+            </div>
         </div>
 
         <div class="global-settings">
@@ -48,6 +71,56 @@
                 </div>
             </label>
         </div>
+
+        <section id="learn-panel">
+            <div class="learn-layout">
+                <aside class="learn-nav" id="learn-nav"></aside>
+                <div class="learn-main">
+                    <div class="learn-kicker" id="learn-kicker">Lesson 1 of 13</div>
+                    <h2 class="learn-title" id="learn-title"></h2>
+                    <div class="learn-subtitle" id="learn-subtitle"></div>
+                    <div class="learn-content" id="learn-content"></div>
+                    <div class="learn-demos" id="learn-demos"></div>
+                    <div class="learn-caption" id="learn-caption">&nbsp;</div>
+                    <div class="fretboard-wrap learn-board">
+                        <canvas id="learn-canvas"></canvas>
+                        <div id="learn-overlay" class="fb-overlay"></div>
+                    </div>
+                    <div class="fb-hint">Click any position on the board to hear it</div>
+                    <div class="learn-footer">
+                        <button class="transport-btn" id="learn-practice-btn">Practice</button>
+                        <div class="learn-footer-right">
+                            <button class="quiz-reset-btn learn-complete-btn" id="learn-complete-btn">Mark complete</button>
+                            <button class="voicing-arrow" id="learn-prev">&larr;</button>
+                            <button class="voicing-arrow" id="learn-next">&rarr;</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="circle-panel" style="display:none">
+            <div class="circle-layout">
+                <div class="circle-wheel-wrap">
+                    <div id="circle-wheel"></div>
+                    <div class="fb-hint">Outer ring: major keys &middot; inner ring: relative minors &mdash; click any key</div>
+                </div>
+                <div class="circle-detail" id="circle-detail"></div>
+            </div>
+        </section>
+
+        <section id="progress-panel" style="display:none">
+            <div class="progress-course" id="progress-course"></div>
+            <div class="progress-cards" id="progress-cards"></div>
+            <div class="progress-heatmap-head">
+                <span class="quiz-stats-title">Fretboard accuracy heatmap &mdash; Note Quiz, all time</span>
+            </div>
+            <div class="fretboard-wrap">
+                <canvas id="progress-canvas"></canvas>
+                <div id="progress-overlay" class="fb-overlay"></div>
+            </div>
+            <div class="fb-hint">Green: solid &middot; amber: shaky &middot; red: trouble &middot; dim: not yet drilled &mdash; click to hear</div>
+        </section>
 
         <section id="reference-panel" style="display:none">
             <div class="panel-header">
@@ -94,13 +167,15 @@
                         </div>
                     </label>
                     <label>
-                        Pentatonic
+                        Overlay
                         <div class="custom-select" id="pentatonic-select" data-value="off">
                             <button class="custom-select-trigger" type="button">Off</button>
                             <div class="custom-select-options">
                                 <div class="custom-select-option selected" data-value="off">Off</div>
-                                <div class="custom-select-option" data-value="major">Major</div>
-                                <div class="custom-select-option" data-value="minor">Minor</div>
+                                <div class="custom-select-option" data-value="major">Major pentatonic</div>
+                                <div class="custom-select-option" data-value="minor">Minor pentatonic</div>
+                                <div class="custom-select-option" data-value="majorscale">Major scale</div>
+                                <div class="custom-select-option" data-value="minorscale">Minor scale</div>
                             </div>
                         </div>
                     </label>
@@ -116,7 +191,7 @@
             <div id="ref-note-info" class="note-info"></div>
         </section>
 
-        <section id="training-panel">
+        <section id="training-panel" style="display:none">
             <div class="panel-header">
                 <div class="controls">
                     <label>
@@ -146,6 +221,8 @@
                             <div class="custom-select-option" data-value="minor">Minor</div>
                             <div class="custom-select-option" data-value="dim">Dim</div>
                             <div class="custom-select-option" data-value="aug">Aug</div>
+                            <div class="custom-select-option" data-value="sus2">Sus2</div>
+                            <div class="custom-select-option" data-value="sus4">Sus4</div>
                         </div>
                     </div>
                 </label>
@@ -157,6 +234,7 @@
                             <div class="custom-select-option selected" data-value="closed">Closed</div>
                             <div class="custom-select-option" data-value="open">Open (spread)</div>
                             <div class="custom-select-option" data-value="drop2">Drop-2 7th</div>
+                            <div class="custom-select-option" data-value="shell">Shell (R-7-3)</div>
                         </div>
                     </div>
                 </label>
@@ -228,6 +306,38 @@
             </div>
 
             <div id="train-scale-bar" class="train-scale-bar"></div>
+
+            <div class="prog-explainer-toggle">
+                <button class="quiz-reset-btn explainer-btn" data-target="train-explainer">About these voicings ▾</button>
+            </div>
+            <div class="prog-explainer" id="train-explainer" style="display:none">
+                <h3>The four voicing types</h3>
+                <p>
+                    <strong>Closed</strong> triads put root, 3rd and 5th on three adjacent strings —
+                    the tightest possible stack, twelve grips per chord (4 string sets × 3 inversions).
+                    <strong>Open (spread)</strong> triads drop the middle voice an octave, skipping a
+                    string for a wide, ringing sound. <strong>Drop-2</strong> takes a four-note seventh
+                    chord and drops its second-highest voice an octave — the classic playable 7th-chord
+                    grips on four adjacent strings. <strong>Shells</strong> strip a seventh chord to
+                    root, 3rd and 7th — the 5th adds nothing to the quality, so jazz players skip it.
+                </p>
+                <h3>Inversions are named by the bass</h3>
+                <p>
+                    Whatever chord tone is lowest names the inversion: root in the bass is root
+                    position, 3rd in the bass is 1st inversion, 5th is 2nd, and (for sevenths)
+                    7th in the bass is 3rd. This holds for spread and drop-2 shapes too, even though
+                    they're derived by reordering a closed stack.
+                </p>
+                <h3>How to practice</h3>
+                <p>
+                    Pick one chord, one string set. Play through the three inversions ascending the
+                    neck until the shapes connect into one mental map. Then start the metronome slow
+                    (60 or below), let it push you between grips, and only speed up when the changes
+                    are clean. <em>Scale Run</em> mode does the same thing through all seven chords of
+                    a key — the fastest route to actually using triads in songs. Arrow keys step
+                    voicings manually; turn Sound on to link each grip to its sound.
+                </p>
+            </div>
         </section>
 
         <section id="notemap-panel" style="display:none">
@@ -348,6 +458,34 @@
                 </div>
                 <div class="quiz-stats" id="quiz-stats"></div>
             </div>
+
+            <div class="prog-explainer-toggle">
+                <button class="quiz-reset-btn explainer-btn" data-target="quiz-explainer">How to learn the whole neck ▾</button>
+            </div>
+            <div class="prog-explainer" id="quiz-explainer" style="display:none">
+                <h3>Anchors first, not everything at once</h3>
+                <p>
+                    Start with the naturals on the low <strong>E and A strings</strong> — that's
+                    Level&nbsp;1, and it's where barre-chord roots live, so every hour invested pays
+                    immediately. Notes sit two frets apart except the two seams where they're
+                    neighbors: <span class="mono">E–F</span> and <span class="mono">B–C</span>.
+                </p>
+                <h3>Octave shapes do the rest</h3>
+                <p>
+                    Every note on the D and G strings is an octave shape away from an anchor you
+                    already know (two strings over, two frets up); crossing onto the B or high-E
+                    string stretches the shape to three frets. Working out a note <em>via</em> its
+                    anchor is not cheating — it's the skill. It just gets fast until it feels like
+                    recall.
+                </p>
+                <h3>Use the machinery</h3>
+                <p>
+                    Questions are weighted toward what you miss, so trust the quiz to find your gaps.
+                    When accuracy is comfortable at a level, move up a level — and when you're
+                    accurate but slow, turn the <strong>timer</strong> on and let it squeeze your
+                    recall time down. Speed is the real goal: on stage, "eventually" is a wrong answer.
+                </p>
+            </div>
         </section>
 
         <section id="intervals-panel" style="display:none">
@@ -412,6 +550,41 @@
                     <button class="quiz-reset-btn" id="iv-reset-btn">Reset stats</button>
                 </div>
                 <div class="quiz-stats" id="iv-stats"></div>
+            </div>
+
+            <div class="prog-explainer-toggle">
+                <button class="quiz-reset-btn explainer-btn" data-target="iv-explainer">Interval cheat sheet &amp; song anchors ▾</button>
+            </div>
+            <div class="prog-explainer" id="iv-explainer" style="display:none">
+                <h3>Hear it via a song you know</h3>
+                <p>
+                    The classic trick for ear training: tie each interval to the first two notes of
+                    a melody you already own. Sing the song cue, then shrink it away until the
+                    interval stands on its own.
+                </p>
+                <table class="iv-anchor-table">
+                    <tr><th>Interval</th><th>Half steps</th><th>Song cue</th></tr>
+                    <tr><td>Minor 2nd</td><td>1</td><td>Jaws theme</td></tr>
+                    <tr><td>Major 2nd</td><td>2</td><td>Happy Birthday</td></tr>
+                    <tr><td>Minor 3rd</td><td>3</td><td>Greensleeves</td></tr>
+                    <tr><td>Major 3rd</td><td>4</td><td>Oh, When the Saints</td></tr>
+                    <tr><td>Perfect 4th</td><td>5</td><td>Here Comes the Bride</td></tr>
+                    <tr><td>Tritone</td><td>6</td><td>The Simpsons theme</td></tr>
+                    <tr><td>Perfect 5th</td><td>7</td><td>Star Wars theme</td></tr>
+                    <tr><td>Minor 6th</td><td>8</td><td>Love Story theme (descending)</td></tr>
+                    <tr><td>Major 6th</td><td>9</td><td>NBC chimes / My Bonnie</td></tr>
+                    <tr><td>Minor 7th</td><td>10</td><td>Star Trek (original) theme</td></tr>
+                    <tr><td>Major 7th</td><td>11</td><td>Take On Me (the big leap)</td></tr>
+                    <tr><td>Octave</td><td>12</td><td>Somewhere Over the Rainbow</td></tr>
+                </table>
+                <h3>On the fretboard, intervals are shapes</h3>
+                <p>
+                    Same string: the interval is just frets apart. One string up: subtract 5 frets
+                    (4 when crossing onto the B string). So a perfect 5th is one string up, two frets
+                    over; a major 3rd is one string up, one fret <em>back</em>. The sight modes here
+                    build exactly that geometry — drill them until distance is something you
+                    <em>see</em>, then use the ear modes until it's something you hear.
+                </p>
             </div>
         </section>
 
@@ -618,11 +791,34 @@
                 </div>
                 <div class="quiz-stats" id="nash-stats"></div>
             </div>
+
+            <div class="prog-explainer-toggle">
+                <button class="quiz-reset-btn explainer-btn" data-target="nash-explainer">How these drills ladder ▾</button>
+            </div>
+            <div class="prog-explainer" id="nash-explainer" style="display:none">
+                <h3>Four drills, one reflex</h3>
+                <p>
+                    <strong>Number → Chord</strong> builds the lookup: hear "4 in the key of E" and
+                    reach for A without counting. <strong>Chord → Number</strong> reverses it, which
+                    is what you need when learning a song by ear. <strong>Chart reading</strong>
+                    strings numbers into real four-chord charts, one key at a time — the actual
+                    session-player skill. <strong>Progression by ear</strong> is the summit: no chart
+                    at all, just sound in, numbers out.
+                </p>
+                <p>
+                    Keys are random on every question by design — the whole point of numbers is that
+                    the key doesn't matter. If you catch yourself translating through note names
+                    ("okay, 5 of A is… E"), that's normal at first; the drill exists to wear that
+                    middle step away. The full notation guide lives under
+                    <em>About the number system</em> in the Progressions tab.
+                </p>
+            </div>
         </section>
 
     </main>
 
     <script src="music-data.js"></script>
+    <script src="learn-content.js"></script>
     <script src="fretboard.js"></script>
     <script src="app.js"></script>
 </body>
