@@ -1730,3 +1730,85 @@ button.circle-chip:hover {
     grid-template-columns: 1fr;
     justify-items: center;
 }
+
+/* ===================== Custom Progression Builder ===================== */
+
+.prog-custom-wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0.25rem 1.5rem 0.75rem;
+}
+
+.prog-custom-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.35rem 0;
+    flex-wrap: wrap;
+}
+
+.prog-custom-label {
+    font-size: 0.6rem;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    min-width: 38px;
+}
+
+.prog-custom-chips {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.prog-custom-chip {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--fg-mute);
+    background: transparent;
+    color: var(--fg);
+    font-size: 0.85rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: center;
+    /* No uppercase transform: case is meaningful in chord symbols (Am ≠ AM) */
+}
+
+.prog-custom-chip:hover {
+    border-color: var(--fg-dim);
+    color: var(--accent);
+}
+
+.prog-custom-chip.seq {
+    border-color: var(--fg-dim);
+}
+
+.prog-custom-chip.seq:hover {
+    border-color: #db4848;
+    color: #db4848;
+}
+
+.prog-custom-chip .prog-custom-sub {
+    display: block;
+    font-size: 0.6rem;
+    color: var(--fg-dim);
+    letter-spacing: 1px;
+    padding-top: 0.1rem;
+}
+
+.prog-custom-empty {
+    font-size: 0.7rem;
+    color: var(--fg-dim);
+    letter-spacing: 0.5px;
+    align-self: center;
+}
+
+/* ===================== Practice Streak ===================== */
+
+.progress-streak {
+    padding-top: 0.75rem;
+    font-size: 0.7rem;
+    color: var(--fg-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}

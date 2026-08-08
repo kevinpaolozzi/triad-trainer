@@ -183,6 +183,7 @@ function refreshAllPanels() {
     if (ivRenderer) renderIvStats();
     if (progRenderer) buildProgression();
     if (nashRenderer) renderNashStats();
+    if (degRenderer) renderDegStats();
     if (learnRenderer) showLesson(learn.index);
     if (circleInited) {
         if (circleQuiz.active) stopCircleQuiz(); // wheel rebuild would orphan the question
@@ -1377,6 +1378,7 @@ function initZonesPanel() {
         updateZones();
     };
     document.getElementById('zones-quality-select')._onChange = updateZones;
+    document.getElementById('zones-overlay-select')._onChange = updateZones;
     document.getElementById('zones-voicing-select')._onChange = function() {
         updateZonesControls();
         updateZones();
@@ -1386,13 +1388,16 @@ function initZonesPanel() {
     updateZones();
 }
 
-// Show Key+Tonality in diatonic mode, Quality in all-roots mode; keep the
+// Per-mode controls — 'key': Key+Tonality+Overlay · 'all': Quality only ·
+// 'variants': just the root (the bar itself is the quality list). Keeps the
 // quality options in the right family (triads vs sevenths) for the voicing.
 function updateZonesControls() {
-    var all = document.getElementById('zones-mode-select').dataset.value === 'all';
-    document.getElementById('zones-key-wrap').style.display = all ? 'none' : '';
-    document.getElementById('zones-scale-wrap').style.display = all ? 'none' : '';
-    document.getElementById('zones-quality-wrap').style.display = all ? '' : 'none';
+    var mode = document.getElementById('zones-mode-select').dataset.value;
+    document.getElementById('zones-key-wrap').style.display = mode === 'all' ? 'none' : '';
+    document.getElementById('zones-key-label').textContent = mode === 'variants' ? 'Root' : 'Key';
+    document.getElementById('zones-scale-wrap').style.display = mode === 'key' ? '' : 'none';
+    document.getElementById('zones-quality-wrap').style.display = mode === 'all' ? '' : 'none';
+    document.getElementById('zones-overlay-wrap').style.display = mode === 'key' ? '' : 'none'; // needs a key
 
     var voicingType = document.getElementById('zones-voicing-select').dataset.value;
     var isSeventh = voicingType === 'drop2' || voicingType === 'shell';
@@ -1417,10 +1422,10 @@ function updateZones() {
     if (!zonesRenderer) return;
     var voicingType = document.getElementById('zones-voicing-select').dataset.value;
     var useSevenths = voicingType === 'drop2' || voicingType === 'shell';
-    var allRoots = document.getElementById('zones-mode-select').dataset.value === 'all';
+    var mode = document.getElementById('zones-mode-select').dataset.value;
 
     var chords;
-    if (allRoots) {
+    if (mode === 'all') {
         // Key-agnostic reference: every root at one quality, no numerals
         var q = document.getElementById('zones-quality-select').dataset.value;
         // Keep the quality in the right family even if the selects got out of sync
@@ -1430,6 +1435,13 @@ function updateZones() {
         for (var pc = 0; pc < 12; pc++) {
             chords.push({ root: pc, quality: q, label: chordDisplayLabel(pc, q), numeral: null });
         }
+    } else if (mode === 'variants') {
+        // One root, every quality in the family — the sub-label names the quality
+        var rootPc = parseInt(document.getElementById('zones-key-select').dataset.value);
+        var qualityOpts = useSevenths ? SEVENTH_QUALITY_OPTIONS : TRIAD_QUALITY_OPTIONS;
+        chords = qualityOpts.map(function(o) {
+            return { root: rootPc, quality: o.value, label: chordDisplayLabel(rootPc, o.value), numeral: o.label };
+        });
     } else {
         var keyPc = parseInt(document.getElementById('zones-key-select').dataset.value);
         var scale = document.getElementById('zones-scale-select').dataset.value;
@@ -1439,7 +1451,7 @@ function updateZones() {
     if (zonesState.selected >= chords.length) zonesState.selected = 0;
 
     var bar = document.getElementById('zones-chord-bar');
-    bar.classList.toggle('zones-bar-all', allRoots);
+    bar.classList.toggle('zones-bar-all', mode === 'all');
     var barHtml = '';
     for (var d = 0; d < chords.length; d++) {
         barHtml += '<span class="scale-chord' + (d === zonesState.selected ? ' active' : '') + '" data-index="' + d + '">'
@@ -1484,6 +1496,31 @@ function renderZoneChord() {
             notes.push(vn[j]);
         }
     }
+    // Key-scale overlay: the diatonic scale dimmed behind the grips, so the
+    // chord reads as a subset of the key's notes in this zone
+    var overlayOn = document.getElementById('zones-overlay-select').dataset.value === 'scale'
+        && document.getElementById('zones-mode-select').dataset.value === 'key';
+    if (overlayOn) {
+        var oKeyPc = parseInt(document.getElementById('zones-key-select').dataset.value);
+        var oScale = document.getElementById('zones-scale-select').dataset.value;
+        var oSpelling = spellScale(oKeyPc, oScale);
+        var oPcs = getScaleNotes(oKeyPc, oScale);
+        for (var si = 0; si < 6; si++) {
+            for (var f = zone.minFret; f <= zone.maxFret; f++) {
+                var opc = (STRING_TUNING[si] + f) % 12;
+                if (oPcs.indexOf(opc) === -1) continue;
+                var ok = si + ':' + f;
+                if (seen[ok]) continue;
+                seen[ok] = true;
+                notes.push({
+                    string: si, fret: f, color: 'pent',
+                    label: oSpelling.map[opc],
+                    glow: false, opacity: 0.35, size: 22
+                });
+            }
+        }
+    }
+
     zonesRenderer.setVoicingGroups(groups);
     zonesRenderer.setNotes(notes);
 
@@ -1539,6 +1576,7 @@ function recordQuizResult(pc, string, correct) {
     if (correct) stats[key].r++;
     else stats[key].w++;
     saveQuizStats(stats);
+    bumpPracticeLog();
 }
 
 function getQuizStrings() {
@@ -1982,6 +2020,7 @@ function recordIvResult(key, correct) {
     if (correct) stats[key].r++;
     else stats[key].w++;
     try { localStorage.setItem(IV_STATS_STORAGE_KEY, JSON.stringify(stats)); } catch (e) {}
+    bumpPracticeLog();
 }
 
 // Generic weighted pick over [{key, ...}] using an error-rate stats object
@@ -2310,8 +2349,25 @@ var prog = {
     bpm: 80,
     beatInChord: 0,
     nextBeatTime: 0,
-    timerId: null
+    timerId: null,
+    custom: []        // degree list for the user-built progression (persisted)
 };
+
+var CUSTOM_PROG_KEY = 'triadTrainerCustomProg';
+var CUSTOM_PROG_MAX = 16;
+
+function loadCustomProg() {
+    try {
+        var v = JSON.parse(localStorage.getItem(CUSTOM_PROG_KEY));
+        return Array.isArray(v) ? v.filter(function(d) { return d >= 0 && d <= 6; }) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveCustomProg() {
+    try { localStorage.setItem(CUSTOM_PROG_KEY, JSON.stringify(prog.custom)); } catch (e) {}
+}
 
 var PROG_PRESETS = {
     major: [
@@ -2335,6 +2391,13 @@ var PROG_PRESETS = {
 
 function initProgressionsPanel() {
     populatePcOptions('prog-key-select');
+    prog.custom = loadCustomProg();
+
+    document.getElementById('prog-custom-clear').addEventListener('click', function() {
+        prog.custom = [];
+        saveCustomProg();
+        buildProgression();
+    });
 
     var canvas = document.getElementById('prog-canvas');
     var overlay = document.getElementById('prog-overlay');
@@ -2389,8 +2452,65 @@ function rebuildProgPresetSelect() {
     var scale = document.getElementById('prog-scale-select').dataset.value;
     var presets = PROG_PRESETS[scale];
     var opts = presets.map(function(p, i) { return { value: String(i), label: p.name }; });
+    opts.push({ value: 'custom', label: 'Custom — build your own' });
     var sel = rebuildSelect('prog-select', opts, '0');
     sel._onChange = buildProgression;
+}
+
+// Chip editor shown when the "Custom" progression is selected: a palette of
+// the key's diatonic chords (click to append) and the loop (click to remove).
+function renderProgCustomBuilder() {
+    var wrap = document.getElementById('prog-custom-wrap');
+    var isCustom = document.getElementById('prog-select').dataset.value === 'custom';
+    wrap.style.display = isCustom ? '' : 'none';
+    if (!isCustom) return;
+
+    var key = parseInt(document.getElementById('prog-key-select').dataset.value);
+    var scale = document.getElementById('prog-scale-select').dataset.value;
+    var useSevenths = document.getElementById('prog-chords-select').dataset.value === 'sevenths';
+    var diatonic = useSevenths ? getScaleSevenths(key, scale) : getScaleTriads(key, scale);
+
+    var palette = document.getElementById('prog-custom-palette');
+    var palHtml = '';
+    for (var d = 0; d < 7; d++) {
+        palHtml += '<button class="prog-custom-chip" data-degree="' + d + '">' + diatonic[d].label
+            + '<span class="prog-custom-sub">' + diatonic[d].numeral + '</span></button>';
+    }
+    palette.innerHTML = palHtml;
+    var palChips = palette.querySelectorAll('.prog-custom-chip');
+    for (var i = 0; i < palChips.length; i++) {
+        (function(chip) {
+            chip.addEventListener('click', function() {
+                if (prog.custom.length >= CUSTOM_PROG_MAX) return;
+                prog.custom.push(parseInt(chip.dataset.degree));
+                saveCustomProg();
+                buildProgression();
+            });
+        })(palChips[i]);
+    }
+
+    var seq = document.getElementById('prog-custom-seq');
+    if (prog.custom.length === 0) {
+        seq.innerHTML = '<span class="prog-custom-empty">Click chords above to build a loop — click a chord here to remove it</span>';
+        return;
+    }
+    var seqHtml = '';
+    for (var i = 0; i < prog.custom.length; i++) {
+        seqHtml += '<button class="prog-custom-chip seq" data-index="' + i + '" title="Remove">'
+            + diatonic[prog.custom[i]].label
+            + '<span class="prog-custom-sub">' + diatonic[prog.custom[i]].numeral + '</span></button>';
+    }
+    seq.innerHTML = seqHtml;
+    var seqChips = seq.querySelectorAll('.prog-custom-chip');
+    for (var i = 0; i < seqChips.length; i++) {
+        (function(chip) {
+            chip.addEventListener('click', function() {
+                prog.custom.splice(parseInt(chip.dataset.index), 1);
+                saveCustomProg();
+                buildProgression();
+            });
+        })(seqChips[i]);
+    }
 }
 
 function avgFret(voicing) {
@@ -2441,9 +2561,28 @@ function buildProgression() {
 
     var key = parseInt(document.getElementById('prog-key-select').dataset.value);
     var scale = document.getElementById('prog-scale-select').dataset.value;
-    var presetIdx = parseInt(document.getElementById('prog-select').dataset.value);
-    var preset = PROG_PRESETS[scale][presetIdx];
+    var presetVal = document.getElementById('prog-select').dataset.value;
     var useSevenths = document.getElementById('prog-chords-select').dataset.value === 'sevenths';
+
+    renderProgCustomBuilder();
+    var preset;
+    if (presetVal === 'custom') {
+        preset = { name: 'Custom', degrees: prog.custom.slice() };
+        if (preset.degrees.length === 0) {
+            // Nothing built yet — clear the board and wait for chips
+            prog.chords = [];
+            prog.index = 0;
+            progRenderer.setVoicingGroups([]);
+            progRenderer.setNotes([]);
+            document.getElementById('prog-bar').innerHTML = '';
+            document.getElementById('prog-now').innerHTML = '&nbsp;';
+            document.getElementById('prog-count').textContent = '0 / 0';
+            document.getElementById('prog-desc').textContent = '';
+            return;
+        }
+    } else {
+        preset = PROG_PRESETS[scale][parseInt(presetVal)];
+    }
 
     var diatonic = useSevenths ? getScaleSevenths(key, scale) : getScaleTriads(key, scale);
 
@@ -2658,6 +2797,7 @@ function recordNashResult(key, correct) {
     if (correct) stats[key].r++;
     else stats[key].w++;
     try { localStorage.setItem(NASH_STATS_STORAGE_KEY, JSON.stringify(stats)); } catch (e) {}
+    bumpPracticeLog();
 }
 
 function nashPatternLabel(degrees, scale) {
@@ -3010,6 +3150,292 @@ function renderNashStats() {
 }
 
 // ===================== Shared helpers for Course / Circle / Progress =====================
+
+// ===================== Practice Log =====================
+//
+// Every drill answer bumps a per-day counter; Progress derives the streak.
+
+var PRACTICE_LOG_KEY = 'triadTrainerPracticeLog';
+
+function practiceDayKey(daysAgo) {
+    var d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    var m = '0' + (d.getMonth() + 1);
+    var day = '0' + d.getDate();
+    return d.getFullYear() + '-' + m.slice(-2) + '-' + day.slice(-2);
+}
+
+function loadPracticeLog() {
+    try {
+        return JSON.parse(localStorage.getItem(PRACTICE_LOG_KEY)) || {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function bumpPracticeLog() {
+    try {
+        var log = loadPracticeLog();
+        var day = practiceDayKey(0);
+        log[day] = (log[day] || 0) + 1;
+        localStorage.setItem(PRACTICE_LOG_KEY, JSON.stringify(log));
+    } catch (e) {}
+}
+
+// Streak = consecutive practiced days ending today (or yesterday, so an
+// unbroken run isn't shown as zero before today's first answer).
+function practiceStreakInfo() {
+    var log = loadPracticeLog();
+    var streak = 0;
+    var i = log[practiceDayKey(0)] ? 0 : 1;
+    while (log[practiceDayKey(i)]) {
+        streak++;
+        i++;
+    }
+    return {
+        streak: streak,
+        today: log[practiceDayKey(0)] || 0,
+        totalDays: Object.keys(log).length
+    };
+}
+
+// ===================== Degrees Drill =====================
+//
+// The bridge between the Note Quiz (absolute names) and Nashville (pure
+// numbers): given a key and a scale degree, find the note on the neck or
+// name it. Keys randomize every question — degree knowledge is the skill.
+
+var degRenderer = null;
+var deg = {
+    target: null, answering: false, nextTimeout: null, lastKey: null,
+    session: { right: 0, total: 0, streak: 0 }
+};
+var DEG_STATS_STORAGE_KEY = 'triadTrainerDegreeStats';
+
+function loadDegStats() {
+    try {
+        return JSON.parse(localStorage.getItem(DEG_STATS_STORAGE_KEY)) || {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function recordDegResult(key, correct) {
+    var stats = loadDegStats();
+    if (!stats[key]) stats[key] = { r: 0, w: 0 };
+    stats[key][correct ? 'r' : 'w']++;
+    try { localStorage.setItem(DEG_STATS_STORAGE_KEY, JSON.stringify(stats)); } catch (e) {}
+    bumpPracticeLog();
+}
+
+function initDegreesPanel() {
+    var canvas = document.getElementById('deg-canvas');
+    var overlay = document.getElementById('deg-overlay');
+    degRenderer = new FretboardRenderer(canvas, overlay);
+    degRenderer.setInteractive(true, handleDegFretboardClick);
+
+    document.getElementById('deg-mode-select')._onChange = newDegQuestion;
+    document.getElementById('deg-keys-select')._onChange = newDegQuestion;
+    document.getElementById('deg-range-select')._onChange = newDegQuestion;
+    document.getElementById('deg-reset-btn').addEventListener('click', function() {
+        localStorage.removeItem(DEG_STATS_STORAGE_KEY);
+        renderDegStats();
+    });
+
+    renderDegStats();
+    newDegQuestion();
+}
+
+function stopDegTimers() {
+    if (deg.nextTimeout) {
+        clearTimeout(deg.nextTimeout);
+        deg.nextTimeout = null;
+    }
+}
+
+function newDegQuestion() {
+    if (!degRenderer) return;
+    stopDegTimers();
+    deg.answering = true;
+
+    var mode = document.getElementById('deg-mode-select').dataset.value;
+    var keysSetting = document.getElementById('deg-keys-select').dataset.value;
+    var scales = keysSetting === 'both' ? ['major', 'minor'] : [keysSetting];
+    var pool = document.getElementById('deg-range-select').dataset.value === 'triad'
+        ? [0, 2, 4] : [0, 1, 2, 3, 4, 5, 6];
+
+    var candidates = [];
+    for (var s = 0; s < scales.length; s++) {
+        for (var d = 0; d < pool.length; d++) {
+            candidates.push({ key: scales[s] + '|' + pool[d], scale: scales[s], degree: pool[d] });
+        }
+    }
+    var picked = weightedPick(candidates, loadDegStats(), deg.lastKey);
+    deg.lastKey = picked.key;
+
+    var keyPc = Math.floor(Math.random() * 12);
+    var spelling = spellScale(keyPc, picked.scale);
+    var degLabel = scaleDegreeLabel(picked.degree, SCALE_INTERVALS[picked.scale][picked.degree]);
+    deg.target = {
+        mode: mode, statKey: picked.key, scale: picked.scale, degree: picked.degree,
+        keyPc: keyPc, pc: getScaleNotes(keyPc, picked.scale)[picked.degree],
+        degLabel: degLabel, spelling: spelling,
+        keyName: spelling.names[0] + ' ' + (picked.scale === 'major' ? 'major' : 'minor')
+    };
+
+    var prompt = document.getElementById('deg-prompt');
+    prompt.classList.remove('correct', 'wrong');
+    degRenderer.setActiveStrings([0, 1, 2, 3, 4, 5]);
+    degRenderer.setVoicingGroups([]);
+
+    if (mode === 'find') {
+        prompt.textContent = 'Find the ' + degLabel + ' of ' + deg.target.keyName + ' — click any position';
+        degRenderer.setNotes([]);
+        document.getElementById('deg-answers').innerHTML = '';
+    } else {
+        prompt.textContent = 'Name the ' + degLabel + ' of ' + deg.target.keyName;
+        renderDegNameBoard(false);
+        buildDegAnswerButtons();
+    }
+    updateDegScoreDisplay();
+}
+
+// Name mode board: the whole scale drawn, target degree masked with '?'
+function renderDegNameBoard(revealed) {
+    var t = deg.target;
+    var scalePcs = getScaleNotes(t.keyPc, t.scale);
+    var notes = [];
+    for (var si = 0; si < 6; si++) {
+        for (var f = 0; f <= 15; f++) {
+            var pc = (STRING_TUNING[si] + f) % 12;
+            var idx = scalePcs.indexOf(pc);
+            if (idx === -1) continue;
+            var isTarget = idx === t.degree;
+            var isRoot = idx === 0;
+            notes.push({
+                string: si, fret: f,
+                color: isTarget ? (revealed ? 'correct' : 'quiz') : (isRoot ? 'root' : 'pent'),
+                label: isTarget && !revealed ? '?' : t.spelling.map[pc],
+                glow: isRoot && !isTarget,
+                opacity: isTarget ? 1.0 : (isRoot ? 0.9 : 0.5),
+                size: 22
+            });
+        }
+    }
+    degRenderer.setNotes(notes);
+}
+
+function buildDegAnswerButtons() {
+    var wrap = document.getElementById('deg-answers');
+    wrap.innerHTML = '';
+    for (var pc = 0; pc < 12; pc++) {
+        (function(pc) {
+            var btn = document.createElement('button');
+            btn.className = 'quiz-answer-btn';
+            btn.textContent = pcOptionLabel(pc);
+            btn.addEventListener('click', function() { handleDegAnswer(pc, btn); });
+            wrap.appendChild(btn);
+        })(pc);
+    }
+}
+
+function handleDegFretboardClick(string, fret) {
+    var t = deg.target;
+    if (!t || t.mode !== 'find' || !deg.answering) {
+        playPositionSound(string, fret);
+        return;
+    }
+    deg.answering = false;
+    playPositionSound(string, fret);
+    var correct = (STRING_TUNING[string] + fret) % 12 === t.pc;
+
+    // Reveal every position of the target note
+    var notes = [];
+    for (var si = 0; si < 6; si++) {
+        for (var f = 0; f <= 15; f++) {
+            if ((STRING_TUNING[si] + f) % 12 !== t.pc) continue;
+            notes.push({
+                string: si, fret: f, color: 'correct', label: t.spelling.map[t.pc],
+                glow: false, opacity: (si === string && f === fret) ? 1.0 : 0.55, size: 22
+            });
+        }
+    }
+    if (!correct) {
+        notes.push({ string: string, fret: fret, color: 'wrong', label: '', glow: false, opacity: 1.0, size: 22 });
+    }
+    degRenderer.setNotes(notes);
+    document.getElementById('deg-prompt').textContent = correct
+        ? 'Correct — ' + t.spelling.map[t.pc] + ' is the ' + t.degLabel + ' of ' + t.keyName
+        : 'Not quite — the ' + t.degLabel + ' of ' + t.keyName + ' is ' + t.spelling.map[t.pc] + ', shown in green';
+    finishDegQuestion(correct);
+}
+
+function handleDegAnswer(pc, btn) {
+    if (!deg.answering) return;
+    deg.answering = false;
+    var t = deg.target;
+    var correct = pc === t.pc;
+    var btns = document.querySelectorAll('#deg-answers .quiz-answer-btn');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].disabled = true;
+        if (i === t.pc) btns[i].classList.add('correct'); // buttons are indexed by pc
+    }
+    if (!correct) btn.classList.add('wrong');
+    renderDegNameBoard(true);
+    document.getElementById('deg-prompt').textContent = correct
+        ? 'Correct — ' + t.spelling.map[t.pc] + ' is the ' + t.degLabel + ' of ' + t.keyName
+        : 'Not quite — the ' + t.degLabel + ' of ' + t.keyName + ' is ' + t.spelling.map[t.pc];
+    finishDegQuestion(correct);
+}
+
+function finishDegQuestion(correct) {
+    deg.session.total++;
+    if (correct) {
+        deg.session.right++;
+        deg.session.streak++;
+    } else {
+        deg.session.streak = 0;
+    }
+    recordDegResult(deg.target.statKey, correct);
+    document.getElementById('deg-prompt').classList.add(correct ? 'correct' : 'wrong');
+    updateDegScoreDisplay();
+    renderDegStats();
+    deg.nextTimeout = setTimeout(newDegQuestion, correct ? 1500 : 2800);
+}
+
+function updateDegScoreDisplay() {
+    document.getElementById('deg-score').textContent = deg.session.right + ' / ' + deg.session.total;
+    var streakEl = document.getElementById('deg-streak');
+    streakEl.textContent = deg.session.streak >= 3 ? 'streak ' + deg.session.streak : '';
+}
+
+function renderDegStats() {
+    var wrap = document.getElementById('deg-stats');
+    if (!wrap) return;
+    var stats = loadDegStats();
+    var html = '';
+    var scales = ['major', 'minor'];
+    for (var s = 0; s < scales.length; s++) {
+        for (var d = 0; d < 7; d++) {
+            var key = scales[s] + '|' + d;
+            var st = stats[key];
+            var total = st ? st.r + st.w : 0;
+            var cls = '', pctText = '—';
+            if (total > 0) {
+                var pct = Math.round((st.r / total) * 100);
+                pctText = pct + '%';
+                cls = pct >= 85 ? 'good' : (pct >= 60 ? 'mid' : 'bad');
+            }
+            var label = scaleDegreeLabel(d, SCALE_INTERVALS[scales[s]][d])
+                + ' ' + (scales[s] === 'major' ? 'maj' : 'min');
+            html += '<div class="quiz-stat-cell ' + cls + '">';
+            html += '<span class="stat-note">' + label + '</span>';
+            html += '<span class="stat-pct">' + pctText + '</span>';
+            html += '</div>';
+        }
+    }
+    wrap.innerHTML = html;
+}
 
 // Build renderer note objects for a chord voicing (standard interval colors)
 function chordVoicingNotes(root, quality, voicing, opts) {
@@ -3595,6 +4021,7 @@ function recordKeyResult(key, correct) {
     if (!stats[key]) stats[key] = { r: 0, w: 0 };
     stats[key][correct ? 'r' : 'w']++;
     localStorage.setItem(KEY_STATS_STORAGE_KEY, JSON.stringify(stats));
+    bumpPracticeLog();
 }
 
 function circleEntryForPc(pc) {
@@ -3825,6 +4252,12 @@ function nashStatLabel(key) {
     return getNashvilleNumber(d, scale, diatonic[d].quality) + ' in ' + scale + ' keys';
 }
 
+function degStatLabel(key) {
+    var parts = key.split('|');
+    var d = parseInt(parts[1]);
+    return 'The ' + scaleDegreeLabel(d, SCALE_INTERVALS[parts[0]][d]) + ' in ' + parts[0] + ' keys';
+}
+
 function keyStatLabel(key) {
     var parts = key.split('|');
     var entry = circleEntryForPc(parseInt(parts[1]));
@@ -3857,6 +4290,20 @@ function renderProgressDashboard() {
         courseHtml += '<button class="transport-btn progress-resume-btn" id="progress-resume">' +
             (doneCount === 0 ? 'Start the course' : 'Continue: ' + next.title) + '</button>';
     }
+
+    // Practice streak (fed by every drill answer)
+    var streak = practiceStreakInfo();
+    var streakText;
+    if (streak.totalDays === 0) {
+        streakText = 'No drill answers logged yet — any drill counts toward your streak';
+    } else {
+        streakText = (streak.streak > 0
+                ? streak.streak + '-day streak'
+                : 'Streak broken — answer anything to restart it')
+            + ' · ' + streak.today + (streak.today === 1 ? ' answer' : ' answers') + ' today'
+            + ' · ' + streak.totalDays + ' practice day' + (streak.totalDays === 1 ? '' : 's') + ' total';
+    }
+    courseHtml += '<div class="progress-streak">' + streakText + '</div>';
     document.getElementById('progress-course').innerHTML = courseHtml;
     var resumeBtn = document.getElementById('progress-resume');
     if (resumeBtn) {
@@ -3868,7 +4315,8 @@ function renderProgressDashboard() {
         { title: 'Note Quiz', mode: 'quiz', stats: loadQuizStats(), labelFn: quizStatLabel },
         { title: 'Intervals', mode: 'intervals', stats: loadIvStats(), labelFn: ivStatLabel },
         { title: 'Nashville', mode: 'nashville', stats: loadNashStats(), labelFn: nashStatLabel },
-        { title: 'Keys', mode: 'circle', stats: loadKeyStats(), labelFn: keyStatLabel }
+        { title: 'Keys', mode: 'circle', stats: loadKeyStats(), labelFn: keyStatLabel },
+        { title: 'Degrees', mode: 'degrees', stats: loadDegStats(), labelFn: degStatLabel }
     ];
     var html = '';
     for (var c = 0; c < cards.length; c++) {
@@ -3957,6 +4405,7 @@ var PANELS = {
     intervals:    { el: 'intervals-panel' },
     progressions: { el: 'progressions-panel' },
     nashville:    { el: 'nash-panel' },
+    degrees:      { el: 'degrees-panel' },
     progress:     { el: 'progress-panel' }
 };
 
@@ -3975,6 +4424,7 @@ function activateMode(mode) {
     if (mode !== 'learn') clearLearnTimers();
     if (mode !== 'scales') stopScalesDrone();
     if (mode !== 'circle' && circleQuiz.active) stopCircleQuiz();
+    if (mode !== 'degrees') stopDegTimers();
 
     // Lazy-init panels so hidden canvases are never sized at zero width
     if (mode === 'learn') {
@@ -4059,6 +4509,13 @@ function activateMode(mode) {
             nashRenderer.resize();
             newNashQuestion();
         }
+    } else if (mode === 'degrees') {
+        if (!degRenderer) {
+            initDegreesPanel();
+        } else {
+            degRenderer.resize();
+            newDegQuestion();
+        }
     }
 }
 
@@ -4094,6 +4551,7 @@ window.addEventListener('resize', function() {
         if (ivRenderer) { ivRenderer.resize(); }
         if (progRenderer) { progRenderer.resize(); }
         if (nashRenderer) { nashRenderer.resize(); }
+        if (degRenderer) { degRenderer.resize(); }
         if (learnRenderer) { learnRenderer.resize(); }
         if (progressRenderer) { progressRenderer.resize(); }
         if (currentMode === 'reference') updateReference();

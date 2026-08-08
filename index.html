@@ -40,6 +40,7 @@
                     <button class="mode-tab" data-mode="intervals">Intervals</button>
                     <button class="mode-tab" data-mode="progressions">Progressions</button>
                     <button class="mode-tab" data-mode="nashville">Nashville</button>
+                    <button class="mode-tab" data-mode="degrees">Degrees</button>
                 </div>
             </div>
             <div class="nav-group">
@@ -463,11 +464,12 @@
                             <div class="custom-select-options">
                                 <div class="custom-select-option selected" data-value="key">In a key</div>
                                 <div class="custom-select-option" data-value="all">All roots</div>
+                                <div class="custom-select-option" data-value="variants">Root variants</div>
                             </div>
                         </div>
                     </label>
                     <label id="zones-key-wrap">
-                        Key
+                        <span id="zones-key-label">Key</span>
                         <div class="custom-select" id="zones-key-select" data-value="0">
                             <button class="custom-select-trigger" type="button">C</button>
                             <div class="custom-select-options"></div>
@@ -506,6 +508,16 @@
                                 <div class="custom-select-option" data-value="open">Open (spread) triads</div>
                                 <div class="custom-select-option" data-value="drop2">Drop-2 sevenths</div>
                                 <div class="custom-select-option" data-value="shell">Shells (R-7-3)</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label id="zones-overlay-wrap">
+                        Overlay
+                        <div class="custom-select" id="zones-overlay-select" data-value="off">
+                            <button class="custom-select-trigger" type="button">Off</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="off">Off</div>
+                                <div class="custom-select-option" data-value="scale">Key scale</div>
                             </div>
                         </div>
                     </label>
@@ -835,6 +847,18 @@
                 </div>
             </div>
 
+            <div id="prog-custom-wrap" class="prog-custom-wrap" style="display:none">
+                <div class="prog-custom-row">
+                    <span class="prog-custom-label">Add</span>
+                    <div id="prog-custom-palette" class="prog-custom-chips"></div>
+                </div>
+                <div class="prog-custom-row">
+                    <span class="prog-custom-label">Loop</span>
+                    <div id="prog-custom-seq" class="prog-custom-chips"></div>
+                    <button class="quiz-reset-btn" id="prog-custom-clear">Clear</button>
+                </div>
+            </div>
+
             <div class="fretboard-wrap">
                 <canvas id="prog-canvas"></canvas>
                 <div id="prog-overlay" class="fb-overlay"></div>
@@ -974,6 +998,66 @@
                     middle step away. The full notation guide lives under
                     <em>About the number system</em> in the Progressions tab.
                 </p>
+            </div>
+        </section>
+
+        <section id="degrees-panel" style="display:none">
+            <div class="panel-header quiz-header">
+                <div class="controls">
+                    <label>
+                        Mode
+                        <div class="custom-select" id="deg-mode-select" data-value="find">
+                            <button class="custom-select-trigger" type="button">Find it (fretboard)</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="find">Find it (fretboard)</div>
+                                <div class="custom-select-option" data-value="name">Name it</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Keys
+                        <div class="custom-select" id="deg-keys-select" data-value="major">
+                            <button class="custom-select-trigger" type="button">Major</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="major">Major</div>
+                                <div class="custom-select-option" data-value="minor">Minor</div>
+                                <div class="custom-select-option" data-value="both">Both</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Degrees
+                        <div class="custom-select" id="deg-range-select" data-value="triad">
+                            <button class="custom-select-trigger" type="button">Triad tones (1 3 5)</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="triad">Triad tones (1 3 5)</div>
+                                <div class="custom-select-option" data-value="all">All seven</div>
+                            </div>
+                        </div>
+                    </label>
+                    <div class="quiz-score-wrap">
+                        <span class="bpm-label">Session</span>
+                        <span class="quiz-score" id="deg-score">0 / 0</span>
+                        <span class="quiz-streak" id="deg-streak"></span>
+                    </div>
+                </div>
+
+                <div class="quiz-prompt" id="deg-prompt">&nbsp;</div>
+            </div>
+
+            <div class="fretboard-wrap">
+                <canvas id="deg-canvas"></canvas>
+                <div id="deg-overlay" class="fb-overlay"></div>
+            </div>
+
+            <div class="quiz-answers" id="deg-answers"></div>
+
+            <div class="quiz-stats-wrap">
+                <div class="quiz-stats-header">
+                    <span class="quiz-stats-title">Per-degree accuracy (all time)</span>
+                    <button class="quiz-reset-btn" id="deg-reset-btn">Reset stats</button>
+                </div>
+                <div class="quiz-stats" id="deg-stats"></div>
             </div>
         </section>
 
