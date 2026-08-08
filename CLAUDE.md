@@ -9,8 +9,10 @@ A guitar theory training web app organized as Learn → Drill → Track: a 14-le
 ## Commands
 
 ```bash
-# Run locally (any static server works)
-python3 -m http.server 8000        # then open http://localhost:8000
+# Run locally — use serve.py, not the stock http.server: it disables caching
+# so edits always show on refresh (the stock server's heuristic caching can
+# serve fresh HTML over stale JS, making new features silently misbehave)
+python3 serve.py 8000              # then open http://localhost:8000
 
 # Deploy: just push to main — GitHub Pages workflow (.github/workflows/pages.yml)
 # publishes the repo root to https://kevinpaolozzi.github.io/triad-trainer/
