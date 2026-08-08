@@ -310,12 +310,15 @@ function invertTriad(pitchClasses, inversion) {
 // minimizing span, then max fret. Works for any chord size.
 // opts.requireAscending: only accept voicings whose MIDI pitches strictly rise
 // from low string to high (true spread/drop shapes).
+// opts.minFret/maxFret: constrain the search to a fret window (neck zones).
 function findBestVoicing(pitchClasses, stringSet, opts) {
     opts = opts || {};
+    var loFret = opts.minFret || 0;
+    var hiFret = opts.maxFret !== undefined ? opts.maxFret : 15;
     var options = pitchClasses.map(function(pc, i) {
         var openNote = STRING_TUNING[stringSet[i]];
         var frets = [];
-        for (var f = 0; f <= 15; f++) {
+        for (var f = loFret; f <= hiFret; f++) {
             if ((openNote + f) % 12 === pc) {
                 frets.push(f);
             }
@@ -396,7 +399,9 @@ function findAllVoicings(pitchClasses, stringSet) {
     return results;
 }
 
-function getAllVoicingsForChord(rootIndex, quality) {
+// range (optional): {minFret, maxFret} restricts all searches to a neck zone.
+function getAllVoicingsForChord(rootIndex, quality, range) {
+    range = range || {};
     var results = [];
     var seen = {};
     for (var si = 0; si < STRING_SETS.length; si++) {
@@ -404,7 +409,7 @@ function getAllVoicingsForChord(rootIndex, quality) {
             var stringSet = STRING_SETS[si];
             var triadNotes = getTriadNotes(rootIndex, quality);
             var inverted = invertTriad(triadNotes, inv);
-            var voicing = findBestVoicing(inverted, stringSet);
+            var voicing = findBestVoicing(inverted, stringSet, { minFret: range.minFret, maxFret: range.maxFret });
             if (voicing) {
                 // Augmented triads are symmetric — different inversions can land
                 // on the identical shape. Dedupe by string set + exact frets.
@@ -423,7 +428,8 @@ function getAllVoicingsForChord(rootIndex, quality) {
     return results;
 }
 
-function getOpenVoicingsForChord(rootIndex, quality) {
+function getOpenVoicingsForChord(rootIndex, quality, range) {
+    range = range || {};
     var results = [];
     var seen = {};
     var triadNotes = getTriadNotes(rootIndex, quality); // [R, 3, 5]
@@ -436,7 +442,7 @@ function getOpenVoicingsForChord(rootIndex, quality) {
             // an octave and becomes the new bass.
             // Reorder pitch classes: [low, mid, high] → [mid, low, high]
             var spreadPCs = [inverted[1], inverted[0], inverted[2]];
-            var voicing = findBestVoicing(spreadPCs, openSet, { requireAscending: true });
+            var voicing = findBestVoicing(spreadPCs, openSet, { requireAscending: true, minFret: range.minFret, maxFret: range.maxFret });
             if (voicing) {
                 // Inversions are named by the bass note, not by the closed
                 // shape they were derived from: bass = root → root position,
@@ -461,7 +467,8 @@ function getOpenVoicingsForChord(rootIndex, quality) {
 // second voice from the top an octave. Close [a,b,c,d] (ascending) becomes
 // [c,a,b,d] — the classic playable 7th-chord shapes on 4 adjacent strings.
 // This is where the term "drop-2" actually belongs (4-note chords).
-function getDrop2SeventhVoicingsForChord(rootIndex, quality) {
+function getDrop2SeventhVoicingsForChord(rootIndex, quality, range) {
+    range = range || {};
     var results = [];
     var seen = {};
     var chordNotes = getChordNotes(rootIndex, quality); // [R, 3, 5, 7]
@@ -471,7 +478,7 @@ function getDrop2SeventhVoicingsForChord(rootIndex, quality) {
         for (var inv = 0; inv < 4; inv++) {
             var close = invertTriad(chordNotes, inv); // rotation works for any size
             var drop2 = [close[2], close[0], close[1], close[3]];
-            var voicing = findBestVoicing(drop2, set, { requireAscending: true, maxSpan: 5 });
+            var voicing = findBestVoicing(drop2, set, { requireAscending: true, maxSpan: 5, minFret: range.minFret, maxFret: range.maxFret });
             if (voicing) {
                 // Inversion named by bass note: R/3/5/7 in the bass
                 var bassInversion = chordNotes.indexOf(drop2[0]);
@@ -497,7 +504,8 @@ function getDrop2SeventhVoicingsForChord(rootIndex, quality) {
 var SHELL_STRING_SETS = [[0, 2, 3], [1, 3, 4]];
 var SHELL_STRING_SET_LABELS = ['6-4-3', '5-3-2'];
 
-function getShellVoicingsForChord(rootIndex, quality) {
+function getShellVoicingsForChord(rootIndex, quality, range) {
+    range = range || {};
     var intervals = CHORD_INTERVALS[quality];
     if (!intervals || intervals.length < 4) return [];
     // Voices low to high: R, 7th, 3rd
@@ -508,7 +516,7 @@ function getShellVoicingsForChord(rootIndex, quality) {
     ];
     var results = [];
     for (var si = 0; si < SHELL_STRING_SETS.length; si++) {
-        var voicing = findBestVoicing(pcs, SHELL_STRING_SETS[si], { requireAscending: true, maxSpan: 4 });
+        var voicing = findBestVoicing(pcs, SHELL_STRING_SETS[si], { requireAscending: true, maxSpan: 4, minFret: range.minFret, maxFret: range.maxFret });
         if (voicing) {
             results.push({
                 voicing: voicing,
@@ -527,7 +535,13 @@ var SCALE_INTERVALS = {
     major: [0, 2, 4, 5, 7, 9, 11],
     minor: [0, 2, 3, 5, 7, 8, 10],
     dim:   [0, 1, 3, 5, 6, 8, 10],   // Locrian mode
-    aug:   [0, 2, 4, 6, 8, 10]       // whole-tone scale
+    aug:   [0, 2, 4, 6, 8, 10],      // whole-tone scale
+    harmonicMinor: [0, 2, 3, 5, 7, 8, 11],
+    melodicMinor:  [0, 2, 3, 5, 7, 9, 11],  // ascending form (jazz minor)
+    dorian:     [0, 2, 3, 5, 7, 9, 10],
+    phrygian:   [0, 1, 3, 5, 7, 8, 10],
+    lydian:     [0, 2, 4, 6, 7, 9, 11],
+    mixolydian: [0, 2, 4, 5, 7, 9, 10]
 };
 
 // Honest display names — the "dim scale" here is Locrian, "aug" is whole-tone.
@@ -535,7 +549,13 @@ var SCALE_DISPLAY_NAMES = {
     major: 'Major scale',
     minor: 'Natural minor scale',
     dim:   'Locrian mode',
-    aug:   'Whole-tone scale'
+    aug:   'Whole-tone scale',
+    harmonicMinor: 'Harmonic minor scale',
+    melodicMinor:  'Melodic minor scale',
+    dorian:     'Dorian mode',
+    phrygian:   'Phrygian mode',
+    lydian:     'Lydian mode',
+    mixolydian: 'Mixolydian mode'
 };
 
 function getScaleNotes(rootIndex, quality) {
@@ -606,6 +626,42 @@ function getScaleTriads(rootIndex, scaleQuality) {
     }
 
     return triads;
+}
+
+// ===================== Notes-per-string patterns =====================
+
+// Lay a scale across all six strings with a fixed number of notes per string
+// (3nps is the standard modern system for 7-note scales; 2nps gives the
+// classic pentatonic boxes). startDegree picks which scale degree the pattern
+// begins on (low E string). The pattern is shifted by whole octaves to fit
+// frets 0-15; returns null if no octave placement fits.
+// Returns { positions: [{string, fret, pc, degree}], minFret, maxFret }.
+function buildNpsPattern(rootPc, intervals, notesPerString, startDegree) {
+    var n = intervals.length;
+    var startPc = (rootPc + intervals[startDegree]) % 12;
+    // Lowest occurrence of the start pc at or above the open low E
+    var midi = STRING_TUNING[0] + ((startPc - STRING_TUNING[0] % 12) + 12) % 12;
+    var deg = startDegree;
+    var positions = [];
+    for (var s = 0; s < 6; s++) {
+        for (var k = 0; k < notesPerString; k++) {
+            positions.push({ string: s, fret: midi - STRING_TUNING[s], pc: midi % 12, degree: deg });
+            var next = (deg + 1) % n;
+            midi += (intervals[next] - intervals[deg] + 12) % 12;
+            deg = next;
+        }
+    }
+    var minFret = Infinity, maxFret = -Infinity;
+    for (var i = 0; i < positions.length; i++) {
+        if (positions[i].fret < minFret) minFret = positions[i].fret;
+        if (positions[i].fret > maxFret) maxFret = positions[i].fret;
+    }
+    var shift = 0;
+    while (minFret + shift < 0) shift += 12;
+    while (maxFret + shift > 15 && minFret + shift - 12 >= 0) shift -= 12;
+    if (minFret + shift < 0 || maxFret + shift > 15) return null;
+    for (var i = 0; i < positions.length; i++) positions[i].fret += shift;
+    return { positions: positions, minFret: minFret + shift, maxFret: maxFret + shift, startDegree: startDegree };
 }
 
 // ===================== Circle of Fifths =====================

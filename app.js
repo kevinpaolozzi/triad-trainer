@@ -177,12 +177,15 @@ function refreshAllPanels() {
         }
     }
     if (mapRenderer) updateNoteMap();
+    if (scalesRenderer) updateScales();
+    if (zonesRenderer) updateZones();
     if (quizRenderer) renderQuizStats();
     if (ivRenderer) renderIvStats();
     if (progRenderer) buildProgression();
     if (nashRenderer) renderNashStats();
     if (learnRenderer) showLesson(learn.index);
     if (circleInited) {
+        if (circleQuiz.active) stopCircleQuiz(); // wheel rebuild would orphan the question
         buildCircleWheel();
         selectCircleKey(circleSelectedPc);
     }
@@ -1056,6 +1059,450 @@ function updateNoteMap() {
     document.getElementById('notemap-title').textContent = pcOptionLabel(pc);
     document.getElementById('notemap-info').textContent =
         positions.length + ' positions in the first 15 frets — the neck repeats at fret 12';
+}
+
+// ===================== Scales Mode =====================
+
+var scalesRenderer = null;
+var scalesState = { patterns: [] };
+
+// kind 'scale' reads SCALE_INTERVALS[key]; 'pent' the pentatonic tables.
+var SCALES_CATALOG = [
+    { value: 'major',         kind: 'scale', key: 'major' },
+    { value: 'minor',         kind: 'scale', key: 'minor' },
+    { value: 'pent-major',    kind: 'pent',  key: 'major' },
+    { value: 'pent-minor',    kind: 'pent',  key: 'minor' },
+    { value: 'harmonicMinor', kind: 'scale', key: 'harmonicMinor' },
+    { value: 'melodicMinor',  kind: 'scale', key: 'melodicMinor' },
+    { value: 'dorian',        kind: 'scale', key: 'dorian' },
+    { value: 'phrygian',      kind: 'scale', key: 'phrygian' },
+    { value: 'lydian',        kind: 'scale', key: 'lydian' },
+    { value: 'mixolydian',    kind: 'scale', key: 'mixolydian' },
+    { value: 'dim',           kind: 'scale', key: 'dim' },
+    { value: 'aug',           kind: 'scale', key: 'aug' }
+];
+
+var MAJOR_DEGREE_SEMIS = [0, 2, 4, 5, 7, 9, 11];
+
+// Degree label relative to the major scale: 1, 2, ♭3, ♯4 ...
+function scaleDegreeLabel(step, semi) {
+    var diff = semi - MAJOR_DEGREE_SEMIS[step];
+    var mark = diff === 0 ? '' : (diff === 1 ? '♯' : diff === -1 ? '♭' : diff === 2 ? '♯♯' : '♭♭');
+    return mark + (step + 1);
+}
+
+// Indices (into the scale's note list) of the tonic chord tones, for coloring.
+function scalesTriadIdx(entry) {
+    if (entry.kind === 'pent') return entry.key === 'major' ? [0, 2, 3] : [0, 1, 3];
+    return [0, 2, 4]; // stacked thirds; also gives the aug triad for whole-tone
+}
+
+function scalesEntry() {
+    var val = document.getElementById('scales-type-select').dataset.value;
+    for (var i = 0; i < SCALES_CATALOG.length; i++) {
+        if (SCALES_CATALOG[i].value === val) return SCALES_CATALOG[i];
+    }
+    return SCALES_CATALOG[0];
+}
+
+// Everything the panel needs about the current scale, in one place.
+function resolveScaleData(rootPc, entry) {
+    if (entry.kind === 'pent') {
+        var parentIv = SCALE_INTERVALS[entry.key];
+        var degs = PENTATONIC_PARENT_DEGREES[entry.key];
+        return {
+            intervals: PENTATONIC_INTERVALS[entry.key],
+            spelling: spellPentatonic(rootPc, entry.key),
+            degLabels: degs.map(function(d) { return scaleDegreeLabel(d, parentIv[d]); }),
+            displayName: (entry.key === 'major' ? 'Major' : 'Minor') + ' pentatonic'
+        };
+    }
+    var iv = SCALE_INTERVALS[entry.key];
+    return {
+        intervals: iv,
+        spelling: spellScale(rootPc, entry.key),
+        degLabels: iv.map(function(semi, d) { return scaleDegreeLabel(d, semi); }),
+        displayName: SCALE_DISPLAY_NAMES[entry.key]
+    };
+}
+
+// Step formula: W – W – H ... (W+H for the pentatonic minor-third gaps)
+function scaleFormula(intervals) {
+    var parts = [];
+    for (var i = 0; i < intervals.length; i++) {
+        var next = i + 1 < intervals.length ? intervals[i + 1] : intervals[0] + 12;
+        var gap = next - intervals[i];
+        parts.push(gap === 1 ? 'H' : gap === 2 ? 'W' : 'W+H');
+    }
+    return parts.join(' – ');
+}
+
+function initScalesPanel() {
+    populatePcOptions('scales-root-select');
+
+    var canvas = document.getElementById('scales-canvas');
+    var overlay = document.getElementById('scales-overlay');
+    scalesRenderer = new FretboardRenderer(canvas, overlay);
+    scalesRenderer.setInteractive(true, function(string, fret) {
+        playPositionSound(string, fret);
+    });
+
+    var rebuildAndUpdate = function() {
+        rebuildScalesPositions();
+        updateScales();
+        retuneScalesDrone(); // follow root changes while droning
+    };
+    document.getElementById('scales-root-select')._onChange = rebuildAndUpdate;
+    document.getElementById('scales-type-select')._onChange = rebuildAndUpdate;
+    document.getElementById('scales-layout-select')._onChange = rebuildAndUpdate;
+    document.getElementById('scales-position-select')._onChange = updateScales;
+
+    document.getElementById('scales-play-up').addEventListener('click', function() { playScale(1); });
+    document.getElementById('scales-play-down').addEventListener('click', function() { playScale(-1); });
+    document.getElementById('scales-drone-btn').addEventListener('click', function() {
+        if (scalesDrone) stopScalesDrone();
+        else startScalesDrone();
+    });
+
+    rebuildScalesPositions();
+    updateScales();
+}
+
+// One pattern per start degree, sorted low to high on the neck; positions
+// that can't fit in 15 frets are dropped (buildNpsPattern returns null).
+function rebuildScalesPositions() {
+    var layout = document.getElementById('scales-layout-select').dataset.value;
+    var wrap = document.getElementById('scales-position-wrap');
+    if (layout === 'full') {
+        scalesState.patterns = [];
+        wrap.style.display = 'none';
+        return;
+    }
+    var rootPc = parseInt(document.getElementById('scales-root-select').dataset.value);
+    var data = resolveScaleData(rootPc, scalesEntry());
+    var nps = layout === 'nps3' ? 3 : 2;
+    var patterns = [];
+    for (var d = 0; d < data.intervals.length; d++) {
+        var p = buildNpsPattern(rootPc, data.intervals, nps, d);
+        if (p) patterns.push(p);
+    }
+    patterns.sort(function(a, b) { return a.minFret - b.minFret || a.maxFret - b.maxFret; });
+    scalesState.patterns = patterns;
+
+    var options = patterns.map(function(p, i) {
+        return { value: String(i), label: 'Frets ' + p.minFret + '–' + p.maxFret };
+    });
+    if (options.length === 0) options = [{ value: '0', label: '—' }];
+    rebuildSelect('scales-position-select', options, '0');
+    wrap.style.display = '';
+}
+
+function currentScalePattern() {
+    if (scalesState.patterns.length === 0) return null;
+    var pos = parseInt(document.getElementById('scales-position-select').dataset.value) || 0;
+    return scalesState.patterns[Math.min(pos, scalesState.patterns.length - 1)];
+}
+
+function scaleNoteObj(string, fret, degIdx, data, triadIdx) {
+    var pc = (STRING_TUNING[string] + fret) % 12;
+    var t = triadIdx.indexOf(degIdx);
+    return {
+        string: string,
+        fret: fret,
+        color: t === -1 ? 'pent' : INTERVAL_COLOR_KEYS[t],
+        label: labelMode === 'intervals' ? data.degLabels[degIdx] : data.spelling.map[pc],
+        glow: degIdx === 0,
+        opacity: t === -1 ? 0.8 : 1.0,
+        size: 22
+    };
+}
+
+function updateScales() {
+    if (!scalesRenderer) return;
+    var rootPc = parseInt(document.getElementById('scales-root-select').dataset.value);
+    var entry = scalesEntry();
+    var data = resolveScaleData(rootPc, entry);
+    var layout = document.getElementById('scales-layout-select').dataset.value;
+    var triadIdx = scalesTriadIdx(entry);
+    var pcs = data.intervals.map(function(iv) { return (rootPc + iv) % 12; });
+
+    scalesRenderer.setActiveStrings([0, 1, 2, 3, 4, 5]);
+    scalesRenderer.setVoicingGroups([]);
+
+    var notes = [];
+    var layoutNote = '';
+    var pattern = layout === 'full' ? null : currentScalePattern();
+    if (pattern) {
+        scalesRenderer.setFocusRegion(pattern.minFret, pattern.maxFret);
+        for (var i = 0; i < pattern.positions.length; i++) {
+            var p = pattern.positions[i];
+            notes.push(scaleNoteObj(p.string, p.fret, p.degree, data, triadIdx));
+        }
+        layoutNote = (layout === 'nps3' ? '3' : '2') + ' notes per string · frets ' + pattern.minFret + '–' + pattern.maxFret;
+    } else {
+        scalesRenderer.setFocusRegion(null);
+        for (var si = 0; si < 6; si++) {
+            for (var f = 0; f <= 15; f++) {
+                var idx = pcs.indexOf((STRING_TUNING[si] + f) % 12);
+                if (idx === -1) continue;
+                notes.push(scaleNoteObj(si, f, idx, data, triadIdx));
+            }
+        }
+    }
+    scalesRenderer.setNotes(notes);
+
+    var html = '<div class="scale-row">';
+    for (var d = 0; d < data.intervals.length; d++) {
+        var isTriad = triadIdx.indexOf(d) !== -1;
+        html += '<div class="scale-degree' + (isTriad ? ' triad' : '') + '">';
+        html += '<span class="degree-name">' + data.spelling.names[d] + '</span>';
+        html += '<span class="degree-num">' + data.degLabels[d] + '</span>';
+        html += '</div>';
+    }
+    html += '</div>';
+    html += '<div class="scale-name">' + data.spelling.names[0] + ' ' + data.displayName
+        + ' · ' + scaleFormula(data.intervals)
+        + (layoutNote ? ' · ' + layoutNote : '') + '</div>';
+    document.getElementById('scales-note-info').innerHTML = html;
+}
+
+// ---- Root drone: a sustained tonic under the scale, so each degree's
+// color (the ♮6 of Dorian, the ♭2 of Phrygian) is audible against home. ----
+
+var scalesDrone = null; // { osc, gain }
+
+function midiToFreq(m) {
+    return 440 * Math.pow(2, (m - 69) / 12);
+}
+
+function scalesDroneMidi() {
+    var rootPc = parseInt(document.getElementById('scales-root-select').dataset.value);
+    return 40 + ((rootPc - 4 + 12) % 12); // E2..D♯3 — low but not muddy
+}
+
+function startScalesDrone() {
+    var ctx = ensureAudioContext();
+    var osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = midiToFreq(scalesDroneMidi());
+    var filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 520;
+    filter.Q.value = 0.7;
+    var gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.06, ctx.currentTime + 0.8);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    scalesDrone = { osc: osc, gain: gain };
+    document.getElementById('scales-drone-btn').classList.add('playing');
+}
+
+function stopScalesDrone() {
+    if (!scalesDrone) return;
+    var ctx = audio.ctx;
+    var g = scalesDrone.gain.gain;
+    g.cancelScheduledValues(ctx.currentTime);
+    g.setValueAtTime(Math.max(g.value, 0.0001), ctx.currentTime);
+    g.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+    scalesDrone.osc.stop(ctx.currentTime + 0.5);
+    scalesDrone = null;
+    var btn = document.getElementById('scales-drone-btn');
+    if (btn) btn.classList.remove('playing');
+}
+
+function retuneScalesDrone() {
+    if (!scalesDrone) return;
+    scalesDrone.osc.frequency.setTargetAtTime(
+        midiToFreq(scalesDroneMidi()), audio.ctx.currentTime, 0.05);
+}
+
+// dir: 1 = ascending, -1 = descending. Patterns play their actual fretted
+// notes; full-neck view plays one octave from the root.
+function playScale(dir) {
+    var ctx = ensureAudioContext();
+    var layout = document.getElementById('scales-layout-select').dataset.value;
+    var midis = [];
+    var pattern = layout === 'full' ? null : currentScalePattern();
+    if (pattern) {
+        for (var i = 0; i < pattern.positions.length; i++) {
+            midis.push(STRING_TUNING[pattern.positions[i].string] + pattern.positions[i].fret);
+        }
+    } else {
+        var rootPc = parseInt(document.getElementById('scales-root-select').dataset.value);
+        var data = resolveScaleData(rootPc, scalesEntry());
+        var rootMidi = 45 + ((rootPc - 9 + 12) % 12); // A2..G♯3
+        for (var i = 0; i < data.intervals.length; i++) midis.push(rootMidi + data.intervals[i]);
+        midis.push(rootMidi + 12);
+    }
+    if (dir < 0) midis.reverse();
+    var t0 = ctx.currentTime + 0.05;
+    for (var i = 0; i < midis.length; i++) playNoteSound(midis[i], t0 + i * 0.22);
+}
+
+// ===================== Chord Zones Mode =====================
+
+var zonesRenderer = null;
+var zonesState = { chords: [], selected: 0 };
+
+var ZONE_RANGES = [
+    { minFret: 0,  maxFret: 5 },
+    { minFret: 5,  maxFret: 10 },
+    { minFret: 10, maxFret: 15 }
+];
+
+function currentZone() {
+    var i = parseInt(document.getElementById('zones-zone-select').dataset.value) || 0;
+    return ZONE_RANGES[Math.min(i, ZONE_RANGES.length - 1)];
+}
+
+function initZonesPanel() {
+    populatePcOptions('zones-key-select');
+
+    var canvas = document.getElementById('zones-canvas');
+    var overlay = document.getElementById('zones-overlay');
+    zonesRenderer = new FretboardRenderer(canvas, overlay);
+    zonesRenderer.setInteractive(true, function(string, fret) {
+        playPositionSound(string, fret);
+    });
+
+    var resetAndUpdate = function() { zonesState.selected = 0; updateZones(); };
+    document.getElementById('zones-key-select')._onChange = resetAndUpdate;
+    document.getElementById('zones-scale-select')._onChange = resetAndUpdate;
+    document.getElementById('zones-mode-select')._onChange = function() {
+        zonesState.selected = 0;
+        updateZonesControls();
+        updateZones();
+    };
+    document.getElementById('zones-quality-select')._onChange = updateZones;
+    document.getElementById('zones-voicing-select')._onChange = function() {
+        updateZonesControls();
+        updateZones();
+    };
+    document.getElementById('zones-zone-select')._onChange = updateZones;
+
+    updateZones();
+}
+
+// Show Key+Tonality in diatonic mode, Quality in all-roots mode; keep the
+// quality options in the right family (triads vs sevenths) for the voicing.
+function updateZonesControls() {
+    var all = document.getElementById('zones-mode-select').dataset.value === 'all';
+    document.getElementById('zones-key-wrap').style.display = all ? 'none' : '';
+    document.getElementById('zones-scale-wrap').style.display = all ? 'none' : '';
+    document.getElementById('zones-quality-wrap').style.display = all ? '' : 'none';
+
+    var voicingType = document.getElementById('zones-voicing-select').dataset.value;
+    var isSeventh = voicingType === 'drop2' || voicingType === 'shell';
+    var current = document.getElementById('zones-quality-select').dataset.value;
+    var wasSeventh = SEVENTH_INTERVALS[current] !== undefined;
+    if (isSeventh !== wasSeventh) {
+        rebuildSelect('zones-quality-select',
+            isSeventh ? SEVENTH_QUALITY_OPTIONS : TRIAD_QUALITY_OPTIONS,
+            isSeventh ? TRIAD_TO_SEVENTH[current] : SEVENTH_TO_TRIAD[current]);
+    }
+}
+
+function zoneVoicingsFor(chord, voicingType, zone) {
+    var range = { minFret: zone.minFret, maxFret: zone.maxFret };
+    if (voicingType === 'open') return getOpenVoicingsForChord(chord.root, chord.quality, range);
+    if (voicingType === 'drop2') return getDrop2SeventhVoicingsForChord(chord.root, chord.quality, range);
+    if (voicingType === 'shell') return getShellVoicingsForChord(chord.root, chord.quality, range);
+    return getAllVoicingsForChord(chord.root, chord.quality, range);
+}
+
+function updateZones() {
+    if (!zonesRenderer) return;
+    var voicingType = document.getElementById('zones-voicing-select').dataset.value;
+    var useSevenths = voicingType === 'drop2' || voicingType === 'shell';
+    var allRoots = document.getElementById('zones-mode-select').dataset.value === 'all';
+
+    var chords;
+    if (allRoots) {
+        // Key-agnostic reference: every root at one quality, no numerals
+        var q = document.getElementById('zones-quality-select').dataset.value;
+        // Keep the quality in the right family even if the selects got out of sync
+        if (useSevenths && SEVENTH_INTERVALS[q] === undefined) q = TRIAD_TO_SEVENTH[q];
+        if (!useSevenths && TRIAD_INTERVALS[q] === undefined) q = SEVENTH_TO_TRIAD[q];
+        chords = [];
+        for (var pc = 0; pc < 12; pc++) {
+            chords.push({ root: pc, quality: q, label: chordDisplayLabel(pc, q), numeral: null });
+        }
+    } else {
+        var keyPc = parseInt(document.getElementById('zones-key-select').dataset.value);
+        var scale = document.getElementById('zones-scale-select').dataset.value;
+        chords = useSevenths ? getScaleSevenths(keyPc, scale) : getScaleTriads(keyPc, scale);
+    }
+    zonesState.chords = chords;
+    if (zonesState.selected >= chords.length) zonesState.selected = 0;
+
+    var bar = document.getElementById('zones-chord-bar');
+    bar.classList.toggle('zones-bar-all', allRoots);
+    var barHtml = '';
+    for (var d = 0; d < chords.length; d++) {
+        barHtml += '<span class="scale-chord' + (d === zonesState.selected ? ' active' : '') + '" data-index="' + d + '">'
+            + chords[d].label
+            + (chords[d].numeral ? '<span class="zone-numeral">' + chords[d].numeral + '</span>' : '')
+            + '</span>';
+    }
+    bar.innerHTML = barHtml;
+    var chips = bar.querySelectorAll('.scale-chord');
+    for (var i = 0; i < chips.length; i++) {
+        (function(chip) {
+            chip.addEventListener('click', function() {
+                zonesState.selected = parseInt(chip.dataset.index);
+                updateZones();
+                playZoneChord();
+            });
+        })(chips[i]);
+    }
+
+    renderZoneChord();
+}
+
+function renderZoneChord() {
+    var zone = currentZone();
+    var voicingType = document.getElementById('zones-voicing-select').dataset.value;
+    var chord = zonesState.chords[zonesState.selected];
+    var grips = zoneVoicingsFor(chord, voicingType, zone);
+
+    zonesRenderer.setActiveStrings([0, 1, 2, 3, 4, 5]);
+    zonesRenderer.setFocusRegion(zone.minFret, zone.maxFret);
+
+    var notes = [];
+    var groups = [];
+    var seen = {};
+    for (var i = 0; i < grips.length; i++) {
+        groups.push(grips[i].voicing);
+        var vn = chordVoicingNotes(chord.root, chord.quality, grips[i].voicing);
+        for (var j = 0; j < vn.length; j++) {
+            var k = vn[j].string + ':' + vn[j].fret;
+            if (seen[k]) continue;
+            seen[k] = true;
+            notes.push(vn[j]);
+        }
+    }
+    zonesRenderer.setVoicingGroups(groups);
+    zonesRenderer.setNotes(notes);
+
+    var spelled = spellChord(chord.root, chord.quality);
+    var text = chord.label + (chord.numeral ? ' (' + chord.numeral + ')' : '')
+        + ' — ' + spelled.names.join(' · ') + ' — ';
+    text += grips.length === 0
+        ? 'no full grips between frets ' + zone.minFret + ' and ' + zone.maxFret + ' — try the next zone'
+        : grips.length + (grips.length === 1 ? ' grip' : ' grips') + ' between frets ' + zone.minFret + ' and ' + zone.maxFret;
+    document.getElementById('zones-info').innerHTML = '<div class="scale-name">' + text + '</div>';
+}
+
+function playZoneChord() {
+    var chord = zonesState.chords[zonesState.selected];
+    var voicingType = document.getElementById('zones-voicing-select').dataset.value;
+    var grips = zoneVoicingsFor(chord, voicingType, currentZone());
+    if (grips.length === 0) return;
+    var ctx = ensureAudioContext();
+    scheduleChordTones(grips[0].voicing, ctx.currentTime + 0.05);
 }
 
 // ===================== Note Quiz Mode =====================
@@ -2789,6 +3236,7 @@ function runLearnDemo(demo, btn, opts) {
     caption.innerHTML = '&nbsp;';
 
     var b = demo.board || {};
+    learnRenderer.setFocusRegion(null); // pattern/zone demos set their own
 
     if (b.type === 'progression') {
         runLearnProgression(demo, silent);
@@ -2910,6 +3358,42 @@ function runLearnDemo(demo, btn, opts) {
             playMidis.push(rootMidi + 12);
             playGap = 0.32;
         }
+    } else if (b.type === 'pattern') {
+        // Notes-per-string scale pattern with the rest of the neck dimmed
+        var pentry = null;
+        for (var i = 0; i < SCALES_CATALOG.length; i++) {
+            if (SCALES_CATALOG[i].value === b.scale) pentry = SCALES_CATALOG[i];
+        }
+        var pdata = resolveScaleData(b.root, pentry);
+        var pat = buildNpsPattern(b.root, pdata.intervals, b.nps, b.startDegree || 0);
+        if (pat) {
+            var pTriadIdx = scalesTriadIdx(pentry);
+            for (var i = 0; i < pat.positions.length; i++) {
+                var pp = pat.positions[i];
+                notes.push(scaleNoteObj(pp.string, pp.fret, pp.degree, pdata, pTriadIdx));
+            }
+            learnRenderer.setFocusRegion(pat.minFret, pat.maxFret);
+            playMidis = pat.positions.map(function(pp) { return STRING_TUNING[pp.string] + pp.fret; });
+            playGap = 0.22;
+            caption.textContent = pdata.spelling.names[0] + ' ' + pdata.displayName + ' — '
+                + b.nps + ' notes per string, frets ' + pat.minFret + '–' + pat.maxFret;
+        }
+    } else if (b.type === 'zone') {
+        // Every grip for one chord inside a fret window
+        var zgrips = getAllVoicingsForChord(b.root, b.quality, { minFret: b.minFret, maxFret: b.maxFret });
+        var zseen = {};
+        for (var i = 0; i < zgrips.length; i++) {
+            groups.push(zgrips[i].voicing);
+            var zn = chordVoicingNotes(b.root, b.quality, zgrips[i].voicing);
+            for (var j = 0; j < zn.length; j++) {
+                var zk = zn[j].string + ':' + zn[j].fret;
+                if (!zseen[zk]) { zseen[zk] = true; notes.push(zn[j]); }
+            }
+        }
+        learnRenderer.setFocusRegion(b.minFret, b.maxFret);
+        if (zgrips.length > 0 && demo.play === 'strum') strumVoicing = zgrips[0].voicing;
+        caption.textContent = zgrips.length + ' ways to grab ' + chordDisplayLabel(b.root, b.quality)
+            + ' between frets ' + b.minFret + ' and ' + b.maxFret;
     }
 
     learnRenderer.setActiveStrings(active);
@@ -2964,6 +3448,10 @@ function initCirclePanel() {
     circleInited = true;
     buildCircleWheel();
     selectCircleKey(circleSelectedPc);
+    document.getElementById('circle-quiz-btn').addEventListener('click', function() {
+        if (circleQuiz.active) stopCircleQuiz();
+        else startCircleQuiz();
+    });
 }
 
 function circleWheelLabel(entry) {
@@ -2996,6 +3484,10 @@ function buildCircleWheel() {
     for (var i = 0; i < keys.length; i++) {
         (function(g) {
             g.addEventListener('click', function() {
+                if (circleQuiz.active) {
+                    handleCircleWheelClick(parseInt(g.dataset.pc));
+                    return;
+                }
                 selectCircleKey(parseInt(g.dataset.pc));
             });
         })(keys[i]);
@@ -3078,6 +3570,196 @@ function selectCircleKey(pc) {
     });
 }
 
+// ===================== Circle Quiz =====================
+//
+// Active-recall drill for the circle itself: two question types are answered
+// by clicking the wheel, two by multiple choice. Same weighted-pick + stats
+// pattern as the other drills; store feeds the Progress dashboard.
+
+var KEY_STATS_STORAGE_KEY = 'triadTrainerKeyStats';
+var circleQuiz = {
+    active: false, answering: false, target: null,
+    correct: 0, total: 0, nextTimeout: null, lastKey: null
+};
+
+function loadKeyStats() {
+    try {
+        return JSON.parse(localStorage.getItem(KEY_STATS_STORAGE_KEY)) || {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function recordKeyResult(key, correct) {
+    var stats = loadKeyStats();
+    if (!stats[key]) stats[key] = { r: 0, w: 0 };
+    stats[key][correct ? 'r' : 'w']++;
+    localStorage.setItem(KEY_STATS_STORAGE_KEY, JSON.stringify(stats));
+}
+
+function circleEntryForPc(pc) {
+    for (var i = 0; i < CIRCLE_OF_FIFTHS.length; i++) {
+        if (CIRCLE_OF_FIFTHS[i].pc === pc) return CIRCLE_OF_FIFTHS[i];
+    }
+    return null;
+}
+
+function sigCountLabel(sig) {
+    if (sig === 0) return 'None';
+    var n = Math.abs(sig);
+    return n + ' ' + (sig > 0 ? 'sharp' : 'flat') + (n > 1 ? 's' : '');
+}
+
+function startCircleQuiz() {
+    circleQuiz.active = true;
+    circleQuiz.correct = 0;
+    circleQuiz.total = 0;
+    var btn = document.getElementById('circle-quiz-btn');
+    btn.textContent = 'Stop quiz';
+    btn.classList.add('playing');
+    document.getElementById('circle-quiz-prompt').style.display = '';
+    // Hide the detail card — it answers half the questions
+    document.getElementById('circle-detail').style.display = 'none';
+    document.querySelector('.circle-layout').classList.add('quizzing');
+    updateCircleQuizScore();
+    newCircleQuizQuestion();
+}
+
+function stopCircleQuiz() {
+    circleQuiz.active = false;
+    if (circleQuiz.nextTimeout) {
+        clearTimeout(circleQuiz.nextTimeout);
+        circleQuiz.nextTimeout = null;
+    }
+    var btn = document.getElementById('circle-quiz-btn');
+    btn.textContent = 'Quiz me';
+    btn.classList.remove('playing');
+    var prompt = document.getElementById('circle-quiz-prompt');
+    prompt.style.display = 'none';
+    prompt.classList.remove('correct', 'wrong');
+    document.getElementById('circle-quiz-answers').innerHTML = '';
+    document.getElementById('circle-quiz-score').textContent = '';
+    document.getElementById('circle-detail').style.display = '';
+    document.querySelector('.circle-layout').classList.remove('quizzing');
+    clearCircleWheelMarks();
+    selectCircleKey(circleSelectedPc);
+}
+
+function clearCircleWheelMarks() {
+    var keys = document.querySelectorAll('#circle-wheel .ck');
+    for (var i = 0; i < keys.length; i++) {
+        keys[i].classList.remove('active', 'ck-correct', 'ck-wrong');
+    }
+}
+
+function updateCircleQuizScore() {
+    document.getElementById('circle-quiz-score').textContent =
+        circleQuiz.correct + ' / ' + circleQuiz.total;
+}
+
+var CIRCLE_QUIZ_TYPES = ['find', 'sig', 'rel', 'fifth'];
+
+// Nearest signatures make the best distractors (2♯ vs 3♯, not 2♯ vs 5♭)
+function circleQuizSigOptions(entry) {
+    var sigs = CIRCLE_OF_FIFTHS.map(function(e) { return e.sig; });
+    sigs.sort(function(a, b) { return Math.abs(a - entry.sig) - Math.abs(b - entry.sig); });
+    return shuffled(sigs.slice(0, 4).map(sigCountLabel));
+}
+
+function newCircleQuizQuestion() {
+    if (!circleQuiz.active) return;
+    circleQuiz.answering = true;
+    var prompt = document.getElementById('circle-quiz-prompt');
+    prompt.classList.remove('correct', 'wrong');
+    clearCircleWheelMarks();
+    document.getElementById('circle-quiz-answers').innerHTML = '';
+
+    var stats = loadKeyStats();
+    var candidates = [];
+    for (var i = 0; i < CIRCLE_OF_FIFTHS.length; i++) {
+        for (var t = 0; t < CIRCLE_QUIZ_TYPES.length; t++) {
+            candidates.push({
+                key: CIRCLE_QUIZ_TYPES[t] + '|' + CIRCLE_OF_FIFTHS[i].pc,
+                type: CIRCLE_QUIZ_TYPES[t],
+                entry: CIRCLE_OF_FIFTHS[i]
+            });
+        }
+    }
+    var picked = weightedPick(candidates, stats, circleQuiz.lastKey);
+    circleQuiz.lastKey = picked.key;
+    var entry = picked.entry;
+
+    if (picked.type === 'find') {
+        circleQuiz.target = { type: 'find', key: picked.key, answerPc: entry.pc };
+        // keySignatureLabel: "3 sharps: F♯ C♯ G♯" — keep only the count part
+        prompt.textContent = 'Click the major key with ' + keySignatureLabel(entry.sig).split(':')[0];
+    } else if (picked.type === 'fifth') {
+        circleQuiz.target = { type: 'fifth', key: picked.key, answerPc: (entry.pc + 7) % 12 };
+        prompt.textContent = 'Click the key a fifth up from ' + circleWheelLabel(entry);
+    } else if (picked.type === 'sig') {
+        var answer = sigCountLabel(entry.sig);
+        circleQuiz.target = { type: 'sig', key: picked.key, answer: answer };
+        prompt.textContent = 'How many sharps or flats in ' + circleWheelLabel(entry) + ' major?';
+        buildCircleQuizButtons(circleQuizSigOptions(entry), answer);
+    } else {
+        var correct = relativeMinorName(entry.pc) + 'm';
+        circleQuiz.target = { type: 'rel', key: picked.key, answer: correct };
+        prompt.textContent = 'What is the relative minor of ' + circleWheelLabel(entry) + ' major?';
+        var opts = [correct];
+        var others = shuffled(CIRCLE_OF_FIFTHS.filter(function(e) { return e.pc !== entry.pc; }));
+        for (var i = 0; i < 3; i++) opts.push(relativeMinorName(others[i].pc) + 'm');
+        buildCircleQuizButtons(shuffled(opts), correct);
+    }
+}
+
+function buildCircleQuizButtons(options, correctValue) {
+    var wrap = document.getElementById('circle-quiz-answers');
+    wrap.innerHTML = '';
+    for (var i = 0; i < options.length; i++) {
+        (function(value) {
+            var btn = document.createElement('button');
+            btn.className = 'quiz-answer-btn';
+            btn.textContent = value;
+            btn.addEventListener('click', function() {
+                if (!circleQuiz.active || !circleQuiz.answering) return;
+                circleQuiz.answering = false;
+                finishCircleQuizQuestion(value === correctValue, correctValue, btn);
+            });
+            wrap.appendChild(btn);
+        })(options[i]);
+    }
+}
+
+function handleCircleWheelClick(pc) {
+    if (!circleQuiz.answering) return;
+    var t = circleQuiz.target;
+    if (t.type !== 'find' && t.type !== 'fifth') return; // MC questions ignore the wheel
+    circleQuiz.answering = false;
+    var correct = pc === t.answerPc;
+    var keys = document.querySelectorAll('#circle-wheel .ck');
+    for (var i = 0; i < keys.length; i++) {
+        var kpc = parseInt(keys[i].dataset.pc);
+        if (kpc === t.answerPc) keys[i].classList.add('ck-correct');
+        else if (!correct && kpc === pc) keys[i].classList.add('ck-wrong');
+    }
+    finishCircleQuizQuestion(correct, null, null);
+}
+
+function finishCircleQuizQuestion(correct, correctValue, clickedBtn) {
+    circleQuiz.total++;
+    if (correct) circleQuiz.correct++;
+    recordKeyResult(circleQuiz.target.key, correct);
+    updateCircleQuizScore();
+    document.getElementById('circle-quiz-prompt').classList.add(correct ? 'correct' : 'wrong');
+    var btns = document.querySelectorAll('#circle-quiz-answers .quiz-answer-btn');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].disabled = true;
+        if (correctValue !== null && btns[i].textContent === correctValue) btns[i].classList.add('correct');
+        else if (btns[i] === clickedBtn && !correct) btns[i].classList.add('wrong');
+    }
+    circleQuiz.nextTimeout = setTimeout(newCircleQuizQuestion, correct ? 1300 : 2400);
+}
+
 // ===================== Progress Panel =====================
 
 var progressRenderer = null;
@@ -3143,6 +3825,16 @@ function nashStatLabel(key) {
     return getNashvilleNumber(d, scale, diatonic[d].quality) + ' in ' + scale + ' keys';
 }
 
+function keyStatLabel(key) {
+    var parts = key.split('|');
+    var entry = circleEntryForPc(parseInt(parts[1]));
+    var name = circleWheelLabel(entry);
+    if (parts[0] === 'find') return 'Finding ' + name + ' by signature';
+    if (parts[0] === 'sig') return name + ' major key signature';
+    if (parts[0] === 'rel') return 'Relative minor of ' + name;
+    return 'Fifth up from ' + name;
+}
+
 function renderProgressDashboard() {
     if (!progressRenderer) return;
 
@@ -3175,7 +3867,8 @@ function renderProgressDashboard() {
     var cards = [
         { title: 'Note Quiz', mode: 'quiz', stats: loadQuizStats(), labelFn: quizStatLabel },
         { title: 'Intervals', mode: 'intervals', stats: loadIvStats(), labelFn: ivStatLabel },
-        { title: 'Nashville', mode: 'nashville', stats: loadNashStats(), labelFn: nashStatLabel }
+        { title: 'Nashville', mode: 'nashville', stats: loadNashStats(), labelFn: nashStatLabel },
+        { title: 'Keys', mode: 'circle', stats: loadKeyStats(), labelFn: keyStatLabel }
     ];
     var html = '';
     for (var c = 0; c < cards.length; c++) {
@@ -3257,6 +3950,8 @@ var PANELS = {
     circle:       { el: 'circle-panel' },
     training:     { el: 'training-panel' },
     reference:    { el: 'reference-panel' },
+    zones:        { el: 'zones-panel' },
+    scales:       { el: 'scales-panel' },
     notemap:      { el: 'notemap-panel' },
     quiz:         { el: 'quiz-panel' },
     intervals:    { el: 'intervals-panel' },
@@ -3278,6 +3973,8 @@ function activateMode(mode) {
     if (mode !== 'intervals' && iv.nextTimeout) { clearTimeout(iv.nextTimeout); iv.nextTimeout = null; }
     if (mode !== 'nashville' && nash.nextTimeout) { clearTimeout(nash.nextTimeout); nash.nextTimeout = null; }
     if (mode !== 'learn') clearLearnTimers();
+    if (mode !== 'scales') stopScalesDrone();
+    if (mode !== 'circle' && circleQuiz.active) stopCircleQuiz();
 
     // Lazy-init panels so hidden canvases are never sized at zero width
     if (mode === 'learn') {
@@ -3319,6 +4016,20 @@ function activateMode(mode) {
         } else {
             mapRenderer.resize();
             updateNoteMap();
+        }
+    } else if (mode === 'scales') {
+        if (!scalesRenderer) {
+            initScalesPanel();
+        } else {
+            scalesRenderer.resize();
+            updateScales();
+        }
+    } else if (mode === 'zones') {
+        if (!zonesRenderer) {
+            initZonesPanel();
+        } else {
+            zonesRenderer.resize();
+            updateZones();
         }
     } else if (mode === 'quiz') {
         if (!quizRenderer) {
@@ -3377,6 +4088,8 @@ window.addEventListener('resize', function() {
         if (refRenderer) { refRenderer.resize(); }
         if (trainRenderer) { trainRenderer.resize(); }
         if (mapRenderer) { mapRenderer.resize(); }
+        if (scalesRenderer) { scalesRenderer.resize(); }
+        if (zonesRenderer) { zonesRenderer.resize(); }
         if (quizRenderer) { quizRenderer.resize(); }
         if (ivRenderer) { ivRenderer.resize(); }
         if (progRenderer) { progRenderer.resize(); }
@@ -3385,6 +4098,8 @@ window.addEventListener('resize', function() {
         if (progressRenderer) { progressRenderer.resize(); }
         if (currentMode === 'reference') updateReference();
         if (currentMode === 'notemap') updateNoteMap();
+        if (currentMode === 'scales') updateScales();
+        if (currentMode === 'zones') updateZones();
         if (currentMode === 'progressions') showProgChord(prog.index);
     }, 100);
 });

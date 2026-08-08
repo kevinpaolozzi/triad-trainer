@@ -87,6 +87,7 @@ function FretboardRenderer(canvas, overlay) {
     this.targetNotes = [];  // target notes to animate toward
     this.voicingGroups = []; // groups of 3 notes that form voicings
     this.activeStrings = [3, 4, 5];
+    this.focusRegion = null; // {min, max} fret window; outside is dimmed
     this.interactive = false;
     this.onClick = null;
     this.animating = false;
@@ -328,6 +329,18 @@ FretboardRenderer.prototype._render = function() {
         this._drawQuad(padL, y - thickness / 2, fbWidth, thickness, color);
     }
 
+    // Focus region: darken the parts of the neck outside [min, max] frets
+    if (this.focusRegion) {
+        var maskCol = [0.02, 0.02, 0.02, 0.82];
+        var leftEdge = padL - 4 * dpr;
+        var rightEdge = padL + fbWidth + 4 * dpr;
+        // Fret f sits between wires f-1 and f; fret 0 is the open position
+        var startX = this.focusRegion.min <= 0 ? leftEdge : padL + (this.focusRegion.min - 1) * this.fretWidth;
+        var endX = Math.min(rightEdge, padL + this.focusRegion.max * this.fretWidth);
+        if (startX > leftEdge) this._drawQuad(leftEdge, topY - 4 * dpr, startX - leftEdge, fbHeight + 8 * dpr, maskCol);
+        if (endX < rightEdge) this._drawQuad(endX, topY - 4 * dpr, rightEdge - endX, fbHeight + 8 * dpr, maskCol);
+    }
+
     // Voicing group connecting lines
     for (var g = 0; g < this.voicingGroups.length; g++) {
         var group = this.voicingGroups[g];
@@ -522,6 +535,14 @@ FretboardRenderer.prototype._resolveColor = function(name) {
 FretboardRenderer.prototype.setActiveStrings = function(stringSet) {
     this.activeStrings = stringSet || [];
     this._overlayDirty = true;
+};
+
+// Dim everything outside the [minFret, maxFret] window (inclusive).
+// Pass null to clear.
+FretboardRenderer.prototype.setFocusRegion = function(minFret, maxFret) {
+    this.focusRegion = (minFret === null || minFret === undefined)
+        ? null
+        : { min: minFret, max: maxFret };
 };
 
 FretboardRenderer.prototype.setVoicingGroups = function(groups) {

@@ -1507,7 +1507,7 @@ button.circle-chip:hover {
 
 .progress-cards {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 1px;
     margin-bottom: 1.5rem;
 }
@@ -1645,4 +1645,88 @@ button.circle-chip:hover {
     .progress-cards {
         grid-template-columns: 1fr;
     }
+}
+
+/* ===================== Chord Zones Panel ===================== */
+
+.zones-chord-bar .scale-chord {
+    cursor: pointer;
+    text-align: center;
+}
+
+.zones-chord-bar .scale-chord:hover {
+    color: var(--fg-dim);
+}
+
+.zones-chord-bar .scale-chord.active:hover {
+    color: var(--accent);
+}
+
+.zones-chord-bar .scale-chord .zone-numeral {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 400;
+    letter-spacing: 1.5px;
+    color: var(--fg-mute);
+    padding-top: 0.2rem;
+    /* No uppercase transform: numeral case is meaningful (ii ≠ II) */
+}
+
+.zones-chord-bar .scale-chord.active .zone-numeral {
+    color: var(--fg-dim);
+}
+
+/* Chord labels appear in this line — case is meaningful (Am7 ≠ AM7) */
+#zones-info .scale-name {
+    text-transform: none;
+    letter-spacing: 1px;
+}
+
+/* All-roots mode: 12 chips need a tighter bar */
+.zones-chord-bar.zones-bar-all {
+    gap: 1.2rem;
+}
+
+.zones-chord-bar.zones-bar-all .scale-chord {
+    font-size: 1.15rem;
+    letter-spacing: 1px;
+}
+
+/* ===================== Circle Quiz ===================== */
+
+.circle-quiz-wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0.5rem 1.5rem 2rem;
+}
+
+.circle-quiz-wrap .quiz-prompt {
+    margin-top: 0.75rem;
+}
+
+.ck.ck-correct circle {
+    fill: rgba(76, 199, 107, 0.25);
+    stroke: #4cc76b;
+    stroke-width: 2;
+}
+
+.ck.ck-correct text {
+    fill: #4cc76b;
+}
+
+.ck.ck-wrong circle {
+    fill: rgba(219, 72, 72, 0.25);
+    stroke: #db4848;
+    stroke-width: 2;
+}
+
+.ck.ck-wrong text {
+    fill: #db4848;
+}
+
+/* While quizzing the detail card is hidden — give the wheel the full row */
+.circle-layout.quizzing {
+    grid-template-columns: 1fr;
+    justify-items: center;
 }

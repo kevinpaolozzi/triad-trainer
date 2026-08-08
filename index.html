@@ -27,6 +27,8 @@
                 <span class="nav-group-label">Explore</span>
                 <div class="nav-group-tabs">
                     <button class="mode-tab" data-mode="reference">Reference</button>
+                    <button class="mode-tab" data-mode="zones">Chord Zones</button>
+                    <button class="mode-tab" data-mode="scales">Scales</button>
                     <button class="mode-tab" data-mode="notemap">Note Map</button>
                 </div>
             </div>
@@ -106,6 +108,16 @@
                     <div class="fb-hint">Outer ring: major keys &middot; inner ring: relative minors &mdash; click any key</div>
                 </div>
                 <div class="circle-detail" id="circle-detail"></div>
+            </div>
+
+            <div class="circle-quiz-wrap">
+                <div class="quiz-stats-header">
+                    <span class="quiz-stats-title">Key knowledge drill</span>
+                    <span class="quiz-score" id="circle-quiz-score"></span>
+                    <button class="transport-btn" id="circle-quiz-btn">Quiz me</button>
+                </div>
+                <div class="quiz-prompt" id="circle-quiz-prompt" style="display:none">&nbsp;</div>
+                <div class="quiz-answers" id="circle-quiz-answers"></div>
             </div>
         </section>
 
@@ -370,6 +382,156 @@
                 <div id="map-overlay" class="fb-overlay"></div>
             </div>
             <div class="fb-hint">Click any position to hear it — octave shapes are your shortcut to learning the whole neck</div>
+        </section>
+
+        <section id="scales-panel" style="display:none">
+            <div class="panel-header">
+                <div class="controls">
+                    <label>
+                        Root
+                        <div class="custom-select" id="scales-root-select" data-value="0">
+                            <button class="custom-select-trigger" type="button">C</button>
+                            <div class="custom-select-options"></div>
+                        </div>
+                    </label>
+                    <label>
+                        Scale
+                        <div class="custom-select" id="scales-type-select" data-value="major">
+                            <button class="custom-select-trigger" type="button">Major (Ionian)</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="major">Major (Ionian)</div>
+                                <div class="custom-select-option" data-value="minor">Natural minor (Aeolian)</div>
+                                <div class="custom-select-option" data-value="pent-major">Major pentatonic</div>
+                                <div class="custom-select-option" data-value="pent-minor">Minor pentatonic</div>
+                                <div class="custom-select-option" data-value="harmonicMinor">Harmonic minor</div>
+                                <div class="custom-select-option" data-value="melodicMinor">Melodic minor</div>
+                                <div class="custom-select-option" data-value="dorian">Dorian</div>
+                                <div class="custom-select-option" data-value="phrygian">Phrygian</div>
+                                <div class="custom-select-option" data-value="lydian">Lydian</div>
+                                <div class="custom-select-option" data-value="mixolydian">Mixolydian</div>
+                                <div class="custom-select-option" data-value="dim">Locrian</div>
+                                <div class="custom-select-option" data-value="aug">Whole-tone</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        View
+                        <div class="custom-select" id="scales-layout-select" data-value="full">
+                            <button class="custom-select-trigger" type="button">Full neck</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="full">Full neck</div>
+                                <div class="custom-select-option" data-value="nps3">3 notes per string</div>
+                                <div class="custom-select-option" data-value="nps2">2 notes per string</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label id="scales-position-wrap" style="display:none">
+                        Position
+                        <div class="custom-select" id="scales-position-select" data-value="0">
+                            <button class="custom-select-trigger" type="button">&mdash;</button>
+                            <div class="custom-select-options"></div>
+                        </div>
+                    </label>
+                    <div class="transport-wrap">
+                        <button class="transport-btn" id="scales-play-up">Play &uarr;</button>
+                    </div>
+                    <div class="transport-wrap">
+                        <button class="transport-btn" id="scales-play-down">Play &darr;</button>
+                    </div>
+                    <div class="transport-wrap">
+                        <button class="transport-btn" id="scales-drone-btn" title="Sustained root note — play the scale over it to hear each degree's color">Drone</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="fretboard-wrap">
+                <canvas id="scales-canvas"></canvas>
+                <div id="scales-overlay" class="fb-overlay"></div>
+            </div>
+            <div class="fb-hint">Click any position to hear it — chord tones are colored, other scale notes dimmed</div>
+
+            <div id="scales-note-info" class="note-info"></div>
+        </section>
+
+        <section id="zones-panel" style="display:none">
+            <div class="panel-header">
+                <div class="controls">
+                    <label>
+                        Chords
+                        <div class="custom-select" id="zones-mode-select" data-value="key">
+                            <button class="custom-select-trigger" type="button">In a key</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="key">In a key</div>
+                                <div class="custom-select-option" data-value="all">All roots</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label id="zones-key-wrap">
+                        Key
+                        <div class="custom-select" id="zones-key-select" data-value="0">
+                            <button class="custom-select-trigger" type="button">C</button>
+                            <div class="custom-select-options"></div>
+                        </div>
+                    </label>
+                    <label id="zones-scale-wrap">
+                        Tonality
+                        <div class="custom-select" id="zones-scale-select" data-value="major">
+                            <button class="custom-select-trigger" type="button">Major</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="major">Major</div>
+                                <div class="custom-select-option" data-value="minor">Minor</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label id="zones-quality-wrap" style="display:none">
+                        Quality
+                        <div class="custom-select" id="zones-quality-select" data-value="major">
+                            <button class="custom-select-trigger" type="button">Major</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="major">Major</div>
+                                <div class="custom-select-option" data-value="minor">Minor</div>
+                                <div class="custom-select-option" data-value="dim">Dim</div>
+                                <div class="custom-select-option" data-value="aug">Aug</div>
+                                <div class="custom-select-option" data-value="sus2">Sus2</div>
+                                <div class="custom-select-option" data-value="sus4">Sus4</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Voicings
+                        <div class="custom-select" id="zones-voicing-select" data-value="closed">
+                            <button class="custom-select-trigger" type="button">Closed triads</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="closed">Closed triads</div>
+                                <div class="custom-select-option" data-value="open">Open (spread) triads</div>
+                                <div class="custom-select-option" data-value="drop2">Drop-2 sevenths</div>
+                                <div class="custom-select-option" data-value="shell">Shells (R-7-3)</div>
+                            </div>
+                        </div>
+                    </label>
+                    <label>
+                        Zone
+                        <div class="custom-select" id="zones-zone-select" data-value="0">
+                            <button class="custom-select-trigger" type="button">Open &ndash; fret 5</button>
+                            <div class="custom-select-options">
+                                <div class="custom-select-option selected" data-value="0">Open &ndash; fret 5</div>
+                                <div class="custom-select-option" data-value="1">Frets 5 &ndash; 10</div>
+                                <div class="custom-select-option" data-value="2">Frets 10 &ndash; 15</div>
+                            </div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <div id="zones-chord-bar" class="train-scale-bar zones-chord-bar"></div>
+
+            <div class="fretboard-wrap">
+                <canvas id="zones-canvas"></canvas>
+                <div id="zones-overlay" class="fb-overlay"></div>
+            </div>
+            <div class="fb-hint">Click a chord above to hear it — every grip inside the zone is drawn; the rest of the neck goes dark</div>
+
+            <div id="zones-info" class="note-info"></div>
         </section>
 
         <section id="quiz-panel" style="display:none">

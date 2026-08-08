@@ -227,7 +227,26 @@ var LESSONS = [
     practice: { mode: 'circle', label: 'Explore the interactive Circle of Fifths' }
 },
 
-// ===================== 12. Progressions & Voice Leading =====================
+// ===================== 12. Mapping the Neck =====================
+{
+    id: 'neckmap',
+    title: 'Mapping the Neck',
+    subtitle: 'Positions, boxes, and chord neighborhoods',
+    sections: [
+        '<p>Notes, triads, and scales live <em>everywhere</em> on the neck at once — and that\'s exactly why the fretboard feels overwhelming. The fix that every strong player eventually finds: <strong>think in neighborhoods</strong>. Pick a window of four to six frets, learn what lives inside it, and only then connect the windows. Players call these windows <strong>positions</strong>.</p>',
+        '<p>Two systems slice the neck for you. <strong>Notes-per-string patterns</strong>: play exactly three scale notes on every string (two for pentatonics) and the scale collapses into a handful of movable shapes that tile the whole neck — the pentatonic version is the famous "box". <strong>Chord zones</strong>: inside any window, every chord you need has a small set of playable grips. Learn one zone deeply and you can play whole songs without leaving it — then do it again a zone higher and you suddenly own two neighborhoods and the road between them.</p>',
+        '<p>The practice loop that makes it stick: pick a key and a zone, play a progression entirely inside it, then run the matching scale pattern over the same frets. When the grips and the boxes share the same real estate, chords stop being shapes and scales stop being exercises — they become the same map.</p>'
+    ],
+    demos: [
+        { label: 'C major — every grip in the open zone', board: { type: 'zone', root: 0, quality: 'major', minFret: 0, maxFret: 5 }, play: 'strum' },
+        { label: 'Same chord, next neighborhood up', board: { type: 'zone', root: 0, quality: 'major', minFret: 5, maxFret: 10 }, play: 'strum' },
+        { label: 'A minor pentatonic — the box', board: { type: 'pattern', root: 9, scale: 'pent-minor', nps: 2, startDegree: 0 } },
+        { label: 'C major, 3 notes per string', board: { type: 'pattern', root: 0, scale: 'major', nps: 3, startDegree: 0 } }
+    ],
+    practice: { mode: 'zones', label: 'Explore: Chord Zones' }
+},
+
+// ===================== 13. Progressions & Voice Leading =====================
 {
     id: 'progressions',
     title: 'Progressions & Voice Leading',
@@ -245,7 +264,7 @@ var LESSONS = [
     practice: { mode: 'progressions', label: 'Drill it: the Progressions tab' }
 },
 
-// ===================== 13. Nashville Numbers =====================
+// ===================== 14. Nashville Numbers =====================
 {
     id: 'nashville',
     title: 'Nashville Numbers',
