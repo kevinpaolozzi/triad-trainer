@@ -18,6 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # Cache-bust local JS/CSS with the commit SHA so a new index.html never
+      # runs against a stale cached app.js (Pages caches assets for 10 min)
+      - name: Version asset URLs
+        run: |
+          sed -i -E "s/(src|href)=\"([a-z-]+\.(js|css))\"/\1=\"\2?v=${GITHUB_SHA::8}\"/g" index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
